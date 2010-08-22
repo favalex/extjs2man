@@ -59,6 +59,20 @@ class Comment(object):
 class Unknown(Comment):
     pass
 
+class Class(Comment):
+    # name, extends, xtype, constructor
+    def __init__(self, cs):
+        self.name = extract('@class', cs)
+        self.extends = extract('@extends', cs, '?')
+        self.xtype = extract('@xtype', cs, '?')
+
+        warn_if_markers(cs)
+
+        self.text = '\n'.join(cs)
+
+    def __str__(self):
+        return 'class %s(%s)' % (self.name, self.extends)
+
 class Cfg(Comment):
     re_ = re.compile('@cfg\s+{([a-zA-Z./]+)}\s+(\w+)\s+')
     default_re = re.compile('defaults to\s+(\S+)')
@@ -82,7 +96,7 @@ class Cfg(Comment):
             self.default = ''
 
     def __str__(self):
-        return "%s %s" % (self.name, self.type)
+        return "%s %s %s" % (self.name, self.type, self.default)
 
     def pod(self):
         return """\
@@ -96,11 +110,26 @@ I<%(name)s> %(type)s %(default)s
 
 """ % self.__dict__
 
+class Param(object):
+    # {type} name text
+    re_ = re.compile('{([a-zA-Z0-9._/]+)}\s+(\w+)\s*(.*)')
+    def __init__(self, c):
+        m = Param.re_.match(c)
+        if m:
+            self.type = m.group(1)
+            self.name = m.group(2)
+            self.text = m.group(3)
+        else:
+            print 'malformed Param', c
+
+    def __str__(self):
+        return self.name
+
 class Method(Comment):
     # name, params, return, text
     def __init__(self, cs):
         self.name = extract('@method', cs)
-        self.params = extract('@param', cs, '*')
+        self.params = map(Param, extract('@param', cs, '*'))
         self.return_ = extract('@return', cs, '?')
 
         warn_if_markers(cs)
@@ -108,22 +137,20 @@ class Method(Comment):
         self.text = '\n'.join(cs)
 
     def __str__(self):
-        return '@method %s(%s) -> %s' % (self.name, ', '.join(self.params), self.return_)
+        return '@method %s(%s) -> %s' % (self.name, ', '.join(map(str, self.params)), self.return_)
 
 class Event(Comment):
     # name, params, text
     def __init__(self, cs):
-        name = extract('@event', cs)
-        self.name = name
-        params = extract('@param', cs, '*')
-        self.params = params
+        self.name = extract('@event', cs)
+        self.params = map(Param, extract('@param', cs, '*'))
 
         warn_if_markers(cs)
 
         self.text = '\n'.join(cs)
 
     def __str__(self):
-        return 'event %s(%s)' % (self.name, ', '.join(self.params))
+        return 'event %s(%s)' % (self.name, ', '.join(map(str, self.params)))
 
 class Property(Comment):
     # name, type, text
@@ -138,7 +165,7 @@ class Property(Comment):
     def __str__(self):
         return 'property %s %s' % (self.name, self.type)
 
-CommentTypes = [Cfg, Event, Method, Property]
+CommentTypes = [Class, Cfg, Event, Method, Property]
 
 in_file_name = sys.argv[1]
 
