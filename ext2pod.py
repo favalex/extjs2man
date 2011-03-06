@@ -2,6 +2,38 @@
 
 import sys, re
 import pyparsing
+from HTMLParser import HTMLParser
+
+class Node(object):
+    def __init__(self, tag):
+        self.tag = tag
+        self.children = []
+
+    def add(self, child):
+        self.children.append(child)
+
+    def __repr__(self):
+        return '%s(%s)' % (self.tag, ', '.join(map(repr, self.children)))
+
+class HTMLNodes(HTMLParser):
+    def __init__(self):
+        HTMLParser.__init__(self)
+
+        self.nodes = [Node('root')]
+
+    def root(self):
+        return self.nodes[0]
+
+    def handle_starttag(self, tag, attrs):
+        node = Node(tag)
+        self.nodes[-1].add(node)
+        self.nodes.append(node)
+
+    def handle_endtag(self, tag):
+        self.nodes.pop()
+
+    def handle_data(self, data):
+        self.nodes[-1].add(data)
 
 def extract(marker, cs, arity=1):
     result = []
@@ -33,17 +65,22 @@ def extract(marker, cs, arity=1):
 def warn_if_markers(cs):
     for c in cs:
         if c.startswith('@'):
-            print 'warn: unprocessed marker', c
+            print >>sys.stderr, 'warn: unprocessed marker', c
 
 class Text(object):
     def __init__(self, s):
         self.parse(s)
 
     def parse(self, s):
-        self.text = s
+        nodes = HTMLNodes()
+        nodes.feed(s)
+        self.text = nodes.root()
 
     def __str__(self):
-        return self.text
+        return repr(self.text) # FIXME
+
+    def __repr__(self):
+        return 'Text(' + repr(self.text) + ')'
 
 class Comment(object):
     @classmethod
@@ -56,6 +93,9 @@ class Comment(object):
     def __str__(self):
         return '----\n' + ('\n'.join(self.cs)) + '----\n'
 
+    def __repr__(self):
+        return 'Comment(' + repr(self.cs[0]) + ')'
+
 class Unknown(Comment):
     pass
 
@@ -64,6 +104,7 @@ class Class(Comment):
     def __init__(self, cs):
         self.name = extract('@class', cs)
         self.extends = extract('@extends', cs, '?')
+        self.constructor = extract('@constructor', cs, '?')
         self.xtype = extract('@xtype', cs, '?')
 
         warn_if_markers(cs)
@@ -72,6 +113,9 @@ class Class(Comment):
 
     def __str__(self):
         return 'class %s(%s)' % (self.name, self.extends)
+
+    def __repr__(self):
+        return 'Class(' + repr(self.name) + ')'
 
 class Cfg(Comment):
     re_ = re.compile('@cfg\s+{([a-zA-Z./]+)}\s+(\w+)\s+')
@@ -98,6 +142,9 @@ class Cfg(Comment):
     def __str__(self):
         return "%s %s %s" % (self.name, self.type, self.default)
 
+    def __repr__(self):
+        return 'Cfg(%s)' % ', '.join(['%s=%r' % (name, getattr(self, name)) for name in ['name', 'type', 'default', 'text']])
+
     def pod(self):
         return """\
 I<%(name)s> %(type)s %(default)s
@@ -120,10 +167,13 @@ class Param(object):
             self.name = m.group(2)
             self.text = m.group(3)
         else:
-            print 'malformed Param', c
+            print >>sys.stderr, 'malformed Param', c
 
     def __str__(self):
         return self.name
+
+    def __repr__(self):
+        return 'Param(' + repr(self.name) + ')'
 
 class Method(Comment):
     # name, params, return, text
@@ -139,6 +189,9 @@ class Method(Comment):
     def __str__(self):
         return '@method %s(%s) -> %s' % (self.name, ', '.join(map(str, self.params)), self.return_)
 
+    def __repr__(self):
+        return 'Method(' + repr(self.name) + ')'
+
 class Event(Comment):
     # name, params, text
     def __init__(self, cs):
@@ -152,6 +205,9 @@ class Event(Comment):
     def __str__(self):
         return 'event %s(%s)' % (self.name, ', '.join(map(str, self.params)))
 
+    def __repr__(self):
+        return 'Event(' + repr(self.name) + ')'
+
 class Property(Comment):
     # name, type, text
     def __init__(self, cs):
@@ -164,6 +220,9 @@ class Property(Comment):
 
     def __str__(self):
         return 'property %s %s' % (self.name, self.type)
+
+    def __repr__(self):
+        return 'Property(' + repr(self.name) + ')'
 
 CommentTypes = [Class, Cfg, Event, Method, Property]
 
@@ -203,6 +262,9 @@ def doc(s):
                     if m:
                         c = '@method ' + m.group(1)
                         cs.insert(0, c)
+                    else:
+                        # TODO try backwards
+                        pass
 
             result = Unknown(cs)
             for C in CommentTypes:
@@ -213,4 +275,7 @@ def doc(s):
             yield result
 
 for d in doc(s):
-    print d
+    try:
+        print d.pod()
+    except AttributeError:
+        print >>sys.stderr, repr(d)
