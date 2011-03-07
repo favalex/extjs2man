@@ -15,6 +15,29 @@ class Node(object):
     def __repr__(self):
         return '%s(%s)' % (self.tag, ', '.join(map(repr, self.children)))
 
+    def __unicode__(self):
+        content =  ''.join([unicode(child) for child in self.children])
+
+        if self.tag in ('root', 'div'):
+            return content
+        elif self.tag == 'p':
+            return content + '\n\n'
+        elif self.tag in ('code', 'tt'):
+            return 'C<%s>' % content
+        elif self.tag == 'b':
+            return 'B<%s>' % content
+        elif self.tag == 'i':
+            return 'I<%s>' % content
+        elif self.tag == 'pre':
+            return '\t' + content.replace('\n', '\n\t')
+        elif self.tag == 'ul':
+            return '\n=over\n' + content + '\n=back\n'
+        elif self.tag == 'li':
+            return '\n=item ' + content
+        else:
+            print >>sys.stderr, "Don't know how to render tag %r" % self.tag
+            return content
+
 class HTMLNodes(HTMLParser):
     def __init__(self):
         HTMLParser.__init__(self)
@@ -33,6 +56,7 @@ class HTMLNodes(HTMLParser):
         self.nodes.pop()
 
     def handle_data(self, data):
+        # FIXME parse {@link }
         self.nodes[-1].add(data)
 
 def extract(marker, cs, arity=1):
@@ -77,7 +101,7 @@ class Text(object):
         self.text = nodes.root()
 
     def __str__(self):
-        return repr(self.text) # FIXME
+        return unicode(self.text) # FIXME
 
     def __repr__(self):
         return 'Text(' + repr(self.text) + ')'
