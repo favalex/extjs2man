@@ -1,4 +1,5 @@
 #! /usr/bin/python
+# -*- coding: utf-8 -*-
 
 import sys, re
 import pyparsing
@@ -153,13 +154,26 @@ class Class(Comment):
 
         warn_if_markers(cs)
 
-        self.text = '\n'.join(cs)
+        self.text = Text('\n'.join(cs))
 
     def __str__(self):
         return 'class %s(%s)' % (self.name, self.extends)
 
     def __repr__(self):
         return 'Class(' + repr(self.name) + ')'
+
+    def pod(self):
+        # FIXME constructor
+        return """\
+B<%(name)s> %(extends)s %(xtype)s
+
+=over 4
+
+%(text)s
+
+=back
+
+""" % self.__dict__
 
 class Cfg(Comment):
     re_ = re.compile('@cfg\s+{([a-zA-Z./]+)}\s+(\w+)\s+')
@@ -191,7 +205,7 @@ class Cfg(Comment):
 
     def pod(self):
         return """\
-I<%(name)s> %(type)s %(default)s
+B<%(name)s> %(type)s %(default)s
 
 =over 4
 
@@ -228,13 +242,26 @@ class Method(Comment):
 
         warn_if_markers(cs)
 
-        self.text = '\n'.join(cs)
+        self.text = Text('\n'.join(cs))
 
     def __str__(self):
         return '@method %s(%s) -> %s' % (self.name, ', '.join(map(str, self.params)), self.return_)
 
     def __repr__(self):
         return 'Method(' + repr(self.name) + ')'
+
+    def pod(self):
+        # FIXME params
+        return """\
+B<%(name)s> -> %(return_)s
+
+=over 4
+
+%(text)s
+
+=back
+
+""" % self.__dict__
 
 class Event(Comment):
     # name, params, text
@@ -244,13 +271,26 @@ class Event(Comment):
 
         warn_if_markers(cs)
 
-        self.text = '\n'.join(cs)
+        self.text = Text('\n'.join(cs))
 
     def __str__(self):
         return 'event %s(%s)' % (self.name, ', '.join(map(str, self.params)))
 
     def __repr__(self):
         return 'Event(' + repr(self.name) + ')'
+
+    def pod(self):
+        # FIXME params
+        return """\
+B<%(name)s>
+
+=over 4
+
+%(text)s
+
+=back
+
+""" % self.__dict__
 
 class Property(Comment):
     # name, type, text
@@ -260,13 +300,25 @@ class Property(Comment):
 
         warn_if_markers(cs)
 
-        self.text = '\n'.join(cs)
+        self.text = Text('\n'.join(cs))
 
     def __str__(self):
         return 'property %s %s' % (self.name, self.type)
 
     def __repr__(self):
         return 'Property(' + repr(self.name) + ')'
+
+    def pod(self):
+        return """\
+B<%(name)s> %(type)s
+
+=over 4
+
+%(text)s
+
+=back
+
+""" % self.__dict__
 
 CommentTypes = [Class, Cfg, Event, Method, Property]
 
@@ -318,8 +370,17 @@ def doc(s):
 
             yield result
 
+print """\
+=pod
+=encoding utf8
+"""
+
 for d in doc(s):
     try:
         print d.pod()
     except AttributeError:
         print >>sys.stderr, repr(d)
+
+print """\
+=cut
+"""
