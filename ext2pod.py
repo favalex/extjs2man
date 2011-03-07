@@ -61,13 +61,18 @@ class HTMLNodes(HTMLParser):
         end = 0
         start = data.find('{@link')
         while start > -1 and start < len(data):
+            cur.add(data[end:start])
+            start += 7
+
             end = data.find('}', start)
             if end == -1:
-                print >>sys.stderr, 'warn: untermined {@link}'
+                print >>sys.stderr, 'warn: missing closing } after {@link'
                 end = len(data)
 
+            end += 1
             node = Node('link')
-            node.add(data[start+7:end])
+            link = data[start:end-1]
+            node.add(link.split()[-1].replace('#', '')) # FIXME replace only leading #
             cur.add(node)
 
             start = data.find('{@link', end)
