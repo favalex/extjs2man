@@ -26,7 +26,7 @@ class Node(object):
             return 'C<%s>' % content
         elif self.tag == 'b':
             return 'B<%s>' % content
-        elif self.tag == 'i':
+        elif self.tag in ('i', 'link'):
             return 'I<%s>' % content
         elif self.tag == 'pre':
             return '\t' + content.replace('\n', '\n\t')
@@ -56,8 +56,23 @@ class HTMLNodes(HTMLParser):
         self.nodes.pop()
 
     def handle_data(self, data):
-        # FIXME parse {@link }
-        self.nodes[-1].add(data)
+        cur = self.nodes[-1]
+
+        end = 0
+        start = data.find('{@link')
+        while start > -1 and start < len(data):
+            end = data.find('}', start)
+            if end == -1:
+                print >>sys.stderr, 'warn: untermined {@link}'
+                end = len(data)
+
+            node = Node('link')
+            node.add(data[start+7:end])
+            cur.add(node)
+
+            start = data.find('{@link', end)
+
+        cur.add(data[end:])
 
 def extract(marker, cs, arity=1):
     result = []
