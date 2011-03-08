@@ -350,6 +350,7 @@ class Document(object):
 
     def parse(self, s):
         star_re = re.compile('^\s*\*\s*', re.MULTILINE)
+        identifier_re = re.compile('\s*(\w+)')
 
         def remove_stars(c):
             # remove /**, *s and */
@@ -378,7 +379,12 @@ class Document(object):
                         break
 
                 if not found:
-                    ats['method'] = ['xxx'] # FIXME
+                    end = p[2]
+                    m = identifier_re.match(s, end)
+                    if m:
+                        ats['method'] = [m.group(1)]
+                    else:
+                        ats['method'] = ['xxx'] # FIXME try backwards
                     self.methods.append(Method(lines, ats))
 
     def pod(self):
