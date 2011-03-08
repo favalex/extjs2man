@@ -65,7 +65,10 @@ class HTMLNodes(HTMLParser):
         self.nodes.append(node)
 
     def handle_endtag(self, tag):
-        self.nodes.pop()
+        if self.nodes[-1].tag == tag:
+            self.nodes.pop()
+        else:
+            print >>sys.stderr, 'Unbalanced close tag %r' % tag
 
     def handle_data(self, data):
         cur = self.nodes[-1]
