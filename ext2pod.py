@@ -373,8 +373,8 @@ class Document(object):
                         break
 
                 if not found:
-                    ats['method'] = 'xxx'
-                    self.unknown.append(Method(lines, ats))
+                    ats['method'] = ['xxx'] # FIXME
+                    self.methods.append(Method(lines, ats))
 
     def pod(self):
         s = """\
