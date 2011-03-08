@@ -17,8 +17,18 @@ class Node(object):
     def __repr__(self):
         return '%s(%s)' % (self.tag, ', '.join(map(repr, self.children)))
 
-    def __unicode__(self):
-        content =  ''.join([unicode(child) for child in self.children])
+    def render(self, plain=False):
+        def render_content(plain):
+            return ''.join([child if isinstance(child, basestring) else child.render(plain=plain) for child in self.children])
+
+        if self.tag == 'pre':
+            content = render_content(True)
+            return '\n\n\t' + content.replace('\n', '\n\t')
+
+        content = render_content(plain)
+
+        if plain:
+            return content
 
         if self.tag in ('root', 'div'):
             return content
@@ -113,7 +123,7 @@ class Text(object):
         self.text = nodes.root()
 
     def __str__(self):
-        return unicode(self.text) # FIXME
+        return self.text.render()
 
     def __repr__(self):
         return 'Text(' + repr(self.text) + ')'
