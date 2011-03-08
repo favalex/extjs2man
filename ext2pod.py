@@ -82,7 +82,7 @@ class HTMLNodes(HTMLParser):
         cur.add(data[end:])
 
 def extract(marker, ats, arity=1):
-    result = ats.pop(marker)
+    result = ats.pop(marker, [])
 
     if arity == 1:
         if len(result) == 1:
@@ -99,9 +99,9 @@ def extract(marker, ats, arity=1):
     else:
         return result
 
-def warn_if_markers(ats):
+def warn_if_markers(section, ats):
     if ats:
-        print >>sys.stderr, 'warn: unprocessed markers', ats.keys()
+        print >>sys.stderr, 'warn: unprocessed markers', ats.keys(), 'in section', section
 
 class Text(object):
     def __init__(self, s):
@@ -121,9 +121,9 @@ class Text(object):
 class Comment(object):
     @classmethod
     def marker(cls):
-        return '@' + cls.__name__.lower()
+        return cls.__name__.lower()
 
-    def __init__(self, cs):
+    def __init__(self, cs, ats):
         self.cs = cs
 
     def __str__(self):
@@ -143,7 +143,7 @@ class Class(Comment):
         self.constructor = extract('constructor', ats, '?')
         self.xtype = extract('xtype', ats, '?')
 
-        warn_if_markers(ats)
+        warn_if_markers('Class', ats)
 
         self.text = Text('\n'.join(cs))
 
@@ -167,24 +167,25 @@ B<%(name)s> %(extends)s %(xtype)s
 """ % self.__dict__
 
 class Cfg(Comment):
-    re_ = re.compile('@cfg\s+{([a-zA-Z./]+)}\s+(\w+)\s+')
+    re_ = re.compile('\s*{([a-zA-Z./]+)}\s+(\w+)\s*')
     default_re = re.compile('defaults to\s+(\S+)')
 
-    def __init__(self, cs):
-        self.parse('\n'.join(cs))
+    def __init__(self, cs, ats):
+        cfg = extract('cfg', ats)
 
-    def parse(self, s):
-        m = Cfg.re_.match(s)
+        m = Cfg.re_.match(cfg)
 
         start, end = m.span()
 
         self.type = m.group(1)
         self.name = m.group(2)
-        self.text = Text(s[end:])
+        cs.insert(0, cfg[end:])
+        s = '\n'.join(cs)
+        self.text = Text(s)
 
         m = Cfg.default_re.search(s)
         if m:
-            self.default = m.group(1)
+            self.default = m.group(1) # FIXME Text
         else:
             self.default = ''
 
@@ -226,12 +227,12 @@ class Param(object):
 
 class Method(Comment):
     # name, params, return, text
-    def __init__(self, cs):
-        self.name = extract('@method', cs)
-        self.params = map(Param, extract('@param', cs, '*'))
-        self.return_ = extract('@return', cs, '?')
+    def __init__(self, cs, ats):
+        self.name = extract('method', ats)
+        self.params = map(Param, extract('param', ats, '*'))
+        self.return_ = extract('return', ats, '?')
 
-        warn_if_markers(cs)
+        warn_if_markers('Method', ats)
 
         self.text = Text('\n'.join(cs))
 
@@ -242,9 +243,10 @@ class Method(Comment):
         return 'Method(' + repr(self.name) + ')'
 
     def pod(self):
-        # FIXME params
+        self.params_summary = ', '.join([param.name for param in self.params])
+
         return """\
-B<%(name)s> -> %(return_)s
+B<%(name)s>(%(params_summary)s) -> %(return_)s
 
 =over 4
 
@@ -256,11 +258,11 @@ B<%(name)s> -> %(return_)s
 
 class Event(Comment):
     # name, params, text
-    def __init__(self, cs):
-        self.name = extract('@event', cs)
-        self.params = map(Param, extract('@param', cs, '*'))
+    def __init__(self, cs, ats):
+        self.name = extract('event', ats)
+        self.params = map(Param, extract('param', ats, '*'))
 
-        warn_if_markers(cs)
+        warn_if_markers('Event', ats)
 
         self.text = Text('\n'.join(cs))
 
@@ -271,9 +273,10 @@ class Event(Comment):
         return 'Event(' + repr(self.name) + ')'
 
     def pod(self):
-        # FIXME params
+        self.params_summary = ', '.join([param.name for param in self.params])
+
         return """\
-B<%(name)s>
+B<%(name)s> %(params_summary)s
 
 =over 4
 
@@ -285,11 +288,11 @@ B<%(name)s>
 
 class Property(Comment):
     # name, type, text
-    def __init__(self, cs):
-        self.name = extract('@property', cs)
-        self.type = extract('@type', cs, 1)
+    def __init__(self, cs, ats):
+        self.name = extract('property', ats)
+        self.type = extract('type', ats, 1)
 
-        warn_if_markers(cs)
+        warn_if_markers('Property', ats)
 
         self.text = Text('\n'.join(cs))
 
@@ -313,7 +316,7 @@ B<%(name)s> %(type)s
 
 class Document(object):
     Sections = [
-        (Class, 'classes', None),
+        (Class, 'classes', 'DESCRIPTION'),
         (Cfg, 'cfgs', 'CONFIGURATION'),
         (Property, 'properties', 'PROPERTIES'),
         (Method, 'methods', 'METHODS'),
@@ -337,7 +340,7 @@ class Document(object):
             # remove /**, *s and */
             c = re.sub('^/\*\*\s*', '', c)
             c = re.sub('\s*\*/$', '', c)
-            c = star_re.sub('', c)
+            return star_re.sub('', c)
 
         for p in pyparsing.cStyleComment('lalala').scanString(s):
             c = p[0][0]
@@ -346,7 +349,7 @@ class Document(object):
                 ats = defaultdict(list)
 
                 for line in remove_stars(c).split('\n'):
-                    if line[0] == '@':
+                    if line.startswith('@'):
                         at_end = line.find(' ') # FIXME any space
                         ats[line[1:at_end]].append(line[at_end+1:])
                     else:
