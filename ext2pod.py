@@ -198,7 +198,9 @@ class Cfg(Comment):
 
         m = Cfg.default_re.search(s)
         if m:
-            self.default = m.group(1) # FIXME Text
+            default = m.group(1)
+            default = default.rstrip(').')
+            self.default = Text(default)
         else:
             self.default = ''
 
