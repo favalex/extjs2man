@@ -4,6 +4,7 @@
 import sys, re
 import pyparsing
 from HTMLParser import HTMLParser
+from collections import defaultdict
 
 class Node(object):
     def __init__(self, tag):
@@ -80,17 +81,8 @@ class HTMLNodes(HTMLParser):
 
         cur.add(data[end:])
 
-def extract(marker, cs, arity=1):
-    result = []
-    dels = []
-
-    for i, c in enumerate(cs):
-        if c.startswith(marker):
-            result.append(c[len(marker):].strip())
-            dels.append(i)
-
-    for i in reversed(dels):
-        del cs[i]
+def extract(marker, ats, arity=1):
+    result = ats.pop(marker)
 
     if arity == 1:
         if len(result) == 1:
@@ -107,10 +99,9 @@ def extract(marker, cs, arity=1):
     else:
         return result
 
-def warn_if_markers(cs):
-    for c in cs:
-        if c.startswith('@'):
-            print >>sys.stderr, 'warn: unprocessed marker', c
+def warn_if_markers(ats):
+    if ats:
+        print >>sys.stderr, 'warn: unprocessed markers', ats.keys()
 
 class Text(object):
     def __init__(self, s):
@@ -146,13 +137,13 @@ class Unknown(Comment):
 
 class Class(Comment):
     # name, extends, xtype, constructor
-    def __init__(self, cs):
-        self.name = extract('@class', cs)
-        self.extends = extract('@extends', cs, '?')
-        self.constructor = extract('@constructor', cs, '?')
-        self.xtype = extract('@xtype', cs, '?')
+    def __init__(self, cs, ats):
+        self.name = extract('class', ats)
+        self.extends = extract('extends', ats, '?')
+        self.constructor = extract('constructor', ats, '?')
+        self.xtype = extract('xtype', ats, '?')
 
-        warn_if_markers(cs)
+        warn_if_markers(ats)
 
         self.text = Text('\n'.join(cs))
 
@@ -341,47 +332,36 @@ class Document(object):
 
     def parse(self, s):
         star_re = re.compile('^\s*\*\s*', re.MULTILINE)
-        identifier_re = re.compile('\s*(\w+)')
-        property_re = re.compile('@property\s+\w+\s*$')
+
+        def remove_stars(c):
+            # remove /**, *s and */
+            c = re.sub('^/\*\*\s*', '', c)
+            c = re.sub('\s*\*/$', '', c)
+            c = star_re.sub('', c)
 
         for p in pyparsing.cStyleComment('lalala').scanString(s):
             c = p[0][0]
-            end = p[2]
             if c.startswith('/**'):
-                # remove /**, *s and */
-                c = re.sub('^/\*\*\s*', '', c)
-                c = re.sub('\s*\*/$', '', c)
-                c = star_re.sub('', c)
+                lines = []
+                ats = defaultdict(list)
 
-                cs = c.split('\n')
-                c = cs[0]
-
-                # normalize first line into '@xxx' form
-                if c[0] != '@':
-                    m = property_re.search(c)
-                    if m:
-                        # move @property at the beginning of the line
-                        pstart, pend = m.span()
-                        c = c[pstart:] + c[:pstart]
+                for line in remove_stars(c).split('\n'):
+                    if line[0] == '@':
+                        at_end = line.find(' ') # FIXME any space
+                        ats[line[1:at_end]].append(line[at_end+1:])
                     else:
-                        # methods are implicit, make them explicit
-                        m = identifier_re.match(s, end)
-                        if m:
-                            c = '@method ' + m.group(1)
-                            cs.insert(0, c)
-                        else:
-                            # TODO try backwards
-                            pass
+                        lines.append(line)
 
                 found = False
                 for C, attname, _ in self.Sections:
-                    if c.startswith(C.marker()):
+                    if C.marker() in ats:
                         found = True
-                        getattr(self, attname).append(C(cs))
+                        getattr(self, attname).append(C(lines, ats))
                         break
 
                 if not found:
-                    self.unknown.append(Unknown(cs))
+                    ats['method'] = 'xxx'
+                    self.unknown.append(Method(lines, ats))
 
     def pod(self):
         s = """\
