@@ -320,67 +320,92 @@ B<%(name)s> %(type)s
 
 """ % self.__dict__
 
-CommentTypes = [Class, Cfg, Event, Method, Property]
+class Document(object):
+    Sections = [
+        (Class, 'classes', None),
+        (Cfg, 'cfgs', 'CONFIGURATION'),
+        (Property, 'properties', 'PROPERTIES'),
+        (Method, 'methods', 'METHODS'),
+        (Event, 'events', 'EVENTS'),
+    ]
+
+    def __init__(self, s):
+        self.classes = []
+        self.cfgs = []
+        self.events = []
+        self.methods = []
+        self.properties = []
+        self.unknown = []
+
+        self.parse(s)
+
+    def parse(self, s):
+        star_re = re.compile('^\s*\*\s*', re.MULTILINE)
+        identifier_re = re.compile('\s*(\w+)')
+        property_re = re.compile('@property\s+\w+\s*$')
+
+        for p in pyparsing.cStyleComment('lalala').scanString(s):
+            c = p[0][0]
+            end = p[2]
+            if c.startswith('/**'):
+                # remove /**, *s and */
+                c = re.sub('^/\*\*\s*', '', c)
+                c = re.sub('\s*\*/$', '', c)
+                c = star_re.sub('', c)
+
+                cs = c.split('\n')
+                c = cs[0]
+
+                # normalize first line into '@xxx' form
+                if c[0] != '@':
+                    m = property_re.search(c)
+                    if m:
+                        # move @property at the beginning of the line
+                        pstart, pend = m.span()
+                        c = c[pstart:] + c[:pstart]
+                    else:
+                        # methods are implicit, make them explicit
+                        m = identifier_re.match(s, end)
+                        if m:
+                            c = '@method ' + m.group(1)
+                            cs.insert(0, c)
+                        else:
+                            # TODO try backwards
+                            pass
+
+                found = False
+                for C, attname, _ in self.Sections:
+                    if c.startswith(C.marker()):
+                        found = True
+                        getattr(self, attname).append(C(cs))
+                        break
+
+                if not found:
+                    self.unknown.append(Unknown(cs))
+
+    def pod(self):
+        s = """\
+=pod
+=encoding utf8
+"""
+
+        for _, attname, section_header in self.Sections:
+            if getattr(self, attname):
+                s += "=head2 %s\n\n" % section_header
+
+                for item in sorted(getattr(self, attname), key=lambda i: i.name):
+                    try:
+                        s += item.pod()
+                    except AttributeError:
+                        print >>sys.stderr, repr(item)
+
+        s += "=cut"
+
+        return s
 
 in_file_name = sys.argv[1]
 
 with open(in_file_name) as f:
     s = f.read()
 
-def doc(s):
-    star_re = re.compile('^\s*\*\s*', re.MULTILINE)
-    identifier_re = re.compile('\s*(\w+)')
-    property_re = re.compile('@property\s+\w+\s*$')
-
-    for p in pyparsing.cStyleComment('lalala').scanString(s):
-        c = p[0][0]
-        start = p[1]
-        end = p[2]
-        if c.startswith('/**'):
-            # remove /**, *s and */
-            c = re.sub('^/\*\*\s*', '', c)
-            c = re.sub('\s*\*/$', '', c)
-            c = star_re.sub('', c)
-
-            cs = c.split('\n')
-            c = cs[0]
-
-            # normalize first line into '@xxx' form
-            if c[0] != '@':
-                m = property_re.search(c)
-                if m:
-                    # move @property at the beginning of the line
-                    pstart, pend = m.span()
-                    c = c[pstart:] + c[:pstart]
-                else:
-                    # methods are implicit, make them explicit
-                    m = identifier_re.match(s, end)
-                    if m:
-                        c = '@method ' + m.group(1)
-                        cs.insert(0, c)
-                    else:
-                        # TODO try backwards
-                        pass
-
-            result = Unknown(cs)
-            for C in CommentTypes:
-                if c.startswith(C.marker()):
-                    result = C(cs)
-                    break
-
-            yield result
-
-print """\
-=pod
-=encoding utf8
-"""
-
-for d in doc(s):
-    try:
-        print d.pod()
-    except AttributeError:
-        print >>sys.stderr, repr(d)
-
-print """\
-=cut
-"""
+print Document(s).pod()
