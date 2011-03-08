@@ -40,12 +40,12 @@ class Node(object):
             return 'B<%s>' % content
         elif self.tag in ('i', 'link'):
             return 'I<%s>' % content
-        elif self.tag == 'pre':
-            return '\t' + content.replace('\n', '\n\t')
         elif self.tag == 'ul':
-            return '\n=over\n' + content + '\n=back\n'
+            return '\n\n=over\n' + content + '\n\n=back\n'
         elif self.tag == 'li':
             return '\n=item ' + content
+        elif self.tag == 'br':
+            return ''
         else:
             print >>sys.stderr, "Don't know how to render tag %r" % self.tag
             return content
@@ -379,12 +379,14 @@ class Document(object):
     def pod(self):
         s = """\
 =pod
+
 =encoding utf8
+
 """
 
         for _, attname, section_header in self.Sections:
             if getattr(self, attname):
-                s += "=head2 %s\n\n" % section_header
+                s += "\n\n=head2 %s\n\n" % section_header
 
                 for item in sorted(getattr(self, attname), key=lambda i: i.name):
                     try:
