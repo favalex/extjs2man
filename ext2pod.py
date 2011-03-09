@@ -220,7 +220,7 @@ B<%(name)s> %(type)s %(default)s
 
 class Param(object):
     # {type} name text
-    re_ = re.compile('{([a-zA-Z0-9._/]+)}\s+(\w+)\s*(.*)')
+    re_ = re.compile('{([a-zA-Z|0-9._/]+)}\s+(\w+)\s*(.*)')
     def __init__(self, c):
         m = Param.re_.match(c)
         if m:
