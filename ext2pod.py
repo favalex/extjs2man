@@ -7,8 +7,9 @@ from HTMLParser import HTMLParser
 from collections import defaultdict
 
 class Node(object):
-    def __init__(self, tag):
+    def __init__(self, tag, attrs=None):
         self.tag = tag
+        self.attrs = attrs
         self.children = []
 
     def add(self, child):
@@ -60,7 +61,7 @@ class HTMLNodes(HTMLParser):
         return self.nodes[0]
 
     def handle_starttag(self, tag, attrs):
-        node = Node(tag)
+        node = Node(tag, attrs)
         self.nodes[-1].add(node)
         self.nodes.append(node)
 
