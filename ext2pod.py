@@ -333,6 +333,7 @@ class Document(object):
 
     def parse(self, s):
         star_re = re.compile('^\s*\*\s*', re.MULTILINE)
+        function_re = re.compile('\s*(\w+)\s*:\s*function')
         identifier_re = re.compile('\s*(\w+)')
 
         def remove_stars(c):
@@ -340,6 +341,13 @@ class Document(object):
             c = re.sub('^/\*\*\s*', '', c)
             c = re.sub('\s*\*/$', '', c)
             return star_re.sub('', c)
+
+        def match(s, start, re_):
+            m = re_.match(s, start)
+            if m:
+                return m.group(1)
+            else:
+                return None
 
         for p in pyparsing.cStyleComment('lalala').scanString(s):
             c = p[0][0]
@@ -350,6 +358,8 @@ class Document(object):
                 for line in remove_stars(c).split('\n'):
                     if line.startswith('@'):
                         at_end = line.find(' ') # FIXME any space
+                        if at_end == -1:
+                            at_end = len(line)
                         ats[line[1:at_end]].append(line[at_end+1:])
                     else:
                         lines.append(line)
@@ -363,12 +373,19 @@ class Document(object):
 
                 if not found:
                     end = p[2]
-                    m = identifier_re.match(s, end)
-                    if m:
-                        ats['method'] = [m.group(1)]
+
+                    name = match(s, end, function_re)
+                    if name:
+                        ats['method'] = [name]
+                        self.methods.append(Method(lines, ats))
                     else:
-                        ats['method'] = ['xxx'] # FIXME try backwards
-                    self.methods.append(Method(lines, ats))
+                        name = match(s, end, identifier_re)
+                        if name:
+                            ats['property'] = [name]
+                            self.properties.append(Property(lines, ats))
+                        else:
+                            # FIXME print error context
+                            print >>sys.stderr, 'Skipping unidentified section'
 
     def pod(self):
         s = """\
