@@ -156,6 +156,7 @@ class Class(Comment):
         self.name = extract('class', ats)
         self.extends = extract('extends', ats, '?')
         self.constructor = extract('constructor', ats, '?')
+        self.singleton = extract('singleton', ats, '?')
         self.xtype = extract('xtype', ats, '?')
 
         warn_if_markers('Class', ats)
@@ -166,7 +167,7 @@ class Class(Comment):
         return 'Class(' + repr(self.name) + ')'
 
     def pod(self):
-        # FIXME constructor
+        # FIXME constructor, singleton
         return """\
 B<%(name)s> %(extends)s %(xtype)s
 
@@ -237,6 +238,9 @@ class Method(Comment):
     # name, params, return, text
     def __init__(self, cs, ats):
         self.name = extract('method', ats)
+        self.private = extract('private', ats, '?')
+        self.static = extract('static', ats, '?')
+        self.hide = extract('hide', ats, '?')
         self.params = map(Param, extract('param', ats, '*'))
         self.return_ = extract('return', ats, '?')
 
@@ -265,6 +269,7 @@ class Event(Comment):
     # name, params, text
     def __init__(self, cs, ats):
         self.name = extract('event', ats)
+        self.hide = extract('hide', ats, '?')
         self.params = map(Param, extract('param', ats, '*'))
 
         warn_if_markers('Event', ats)
@@ -292,7 +297,10 @@ class Property(Comment):
     # name, type, text
     def __init__(self, cs, ats):
         self.name = extract('property', ats)
-        self.type = extract('type', ats, 1)
+        self.private = extract('private', ats, '?')
+        self.static = extract('static', ats, '?')
+        self.hide = extract('hide', ats, '?')
+        self.type = extract('type', ats, '?') # FIXME check if this is the correct arity
 
         warn_if_markers('Property', ats)
 
