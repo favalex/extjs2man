@@ -91,8 +91,12 @@ class HTMLNodes(HTMLParser):
             end += 1
             node = Node('link')
             link = data[start:end-1]
-            node.add(link.split()[-1].replace('#', '')) # FIXME replace only leading #
-            cur.add(node)
+            try:
+                node.add(link.split()[-1].replace('#', '')) # FIXME replace only leading #
+            except IndexError:
+                print >>sys.stderr, 'Malformed link %r' % link
+            else:
+                cur.add(node)
 
             start = data.find('{@link', end)
 
