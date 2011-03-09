@@ -180,17 +180,20 @@ B<%(name)s> %(extends)s %(xtype)s
 """ % self.__dict__
 
 class Cfg(Comment):
-    re_ = re.compile('\s*{([a-zA-Z./]+)}\s+(\w+)\s*')
+    re_ = re.compile('\s*({[a-zA-Z./]+})?\s*(\w+)\s*')
     default_re = re.compile('defaults to\s+(\S+)')
 
     def __init__(self, cs, ats):
         cfg = extract('cfg', ats)
 
         m = Cfg.re_.match(cfg)
+        if m is None:
+            print >>sys.stderr, 'Malformed cfg %r' % cfg
+            return
 
         start, end = m.span()
 
-        self.type = m.group(1)
+        self.type = m.group(1).lstrip('{').rstrip('}') if m.group(1) else '_'
         self.name = m.group(2)
         cs.insert(0, cfg[end:])
         s = '\n'.join(cs)
