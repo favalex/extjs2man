@@ -139,14 +139,8 @@ class Comment(object):
     def __init__(self, cs, ats):
         self.cs = cs
 
-    def __str__(self):
-        return '----\n' + ('\n'.join(self.cs)) + '----\n'
-
     def __repr__(self):
         return 'Comment(' + repr(self.cs[0]) + ')'
-
-class Unknown(Comment):
-    pass
 
 class Class(Comment):
     # name, extends, xtype, constructor
@@ -159,9 +153,6 @@ class Class(Comment):
         warn_if_markers('Class', ats)
 
         self.text = Text('\n'.join(cs))
-
-    def __str__(self):
-        return 'class %s(%s)' % (self.name, self.extends)
 
     def __repr__(self):
         return 'Class(' + repr(self.name) + ')'
@@ -204,9 +195,6 @@ class Cfg(Comment):
         else:
             self.default = ''
 
-    def __str__(self):
-        return "%s %s %s" % (self.name, self.type, self.default)
-
     def __repr__(self):
         return 'Cfg(%s)' % ', '.join(['%s=%r' % (name, getattr(self, name)) for name in ['name', 'type', 'default', 'text']])
 
@@ -234,9 +222,6 @@ class Param(object):
         else:
             print >>sys.stderr, 'malformed Param', c
 
-    def __str__(self):
-        return self.name
-
     def __repr__(self):
         return 'Param(' + repr(self.name) + ')'
 
@@ -250,9 +235,6 @@ class Method(Comment):
         warn_if_markers('Method', ats)
 
         self.text = Text('\n'.join(cs))
-
-    def __str__(self):
-        return '@method %s(%s) -> %s' % (self.name, ', '.join(map(str, self.params)), self.return_)
 
     def __repr__(self):
         return 'Method(' + repr(self.name) + ')'
@@ -281,9 +263,6 @@ class Event(Comment):
 
         self.text = Text('\n'.join(cs))
 
-    def __str__(self):
-        return 'event %s(%s)' % (self.name, ', '.join(map(str, self.params)))
-
     def __repr__(self):
         return 'Event(' + repr(self.name) + ')'
 
@@ -310,9 +289,6 @@ class Property(Comment):
         warn_if_markers('Property', ats)
 
         self.text = Text('\n'.join(cs))
-
-    def __str__(self):
-        return 'property %s %s' % (self.name, self.type)
 
     def __repr__(self):
         return 'Property(' + repr(self.name) + ')'
@@ -344,7 +320,6 @@ class Document(object):
         self.events = []
         self.methods = []
         self.properties = []
-        self.unknown = []
 
         self.parse(s)
 
