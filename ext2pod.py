@@ -335,12 +335,16 @@ class Document(object):
 
     def __init__(self, s):
         self.classes = []
-        self.cfgs = []
-        self.events = []
-        self.methods = []
-        self.properties = []
-
         self.parse(s)
+
+    def new_class(self):
+        return {
+            'classes': [],
+            'cfgs': [],
+            'events': [],
+            'methods': [],
+            'properties': [],
+        }
 
     def parse(self, s):
         star_re = re.compile('^\s*\*\s*', re.MULTILINE)
@@ -377,9 +381,12 @@ class Document(object):
 
                 found = False
                 for C, attname, _ in self.Sections:
+                    if 'class' in ats:
+                        self.classes.append(self.new_class())
+
                     if C.marker() in ats:
                         found = True
-                        getattr(self, attname).append(C(lines, ats))
+                        self.classes[-1][attname].append(C(lines, ats))
                         break
 
                 if not found:
@@ -388,17 +395,17 @@ class Document(object):
                     name = match(s, end, function_re)
                     if name:
                         ats['method'] = [name]
-                        self.methods.append(Method(lines, ats))
+                        self.classes[-1]['methods'].append(Method(lines, ats))
                     else:
                         name = match(s, end, identifier_re)
                         if name:
                             ats['property'] = [name]
-                            self.properties.append(Property(lines, ats))
+                            self.classes[-1]['properties'].append(Property(lines, ats))
                         else:
                             # FIXME print error context
                             print >>sys.stderr, 'Skipping unidentified section'
 
-    def pod(self):
+    def pod(self, class_):
         s = """\
 =pod
 
@@ -407,10 +414,10 @@ class Document(object):
 """
 
         for _, attname, section_header in self.Sections:
-            if getattr(self, attname):
+            if class_[attname]:
                 s += "\n\n=head2 %s\n\n" % section_header
 
-                for item in sorted(getattr(self, attname), key=lambda i: i.name):
+                for item in sorted(class_[attname], key=lambda i: i.name):
                     try:
                         s += item.pod()
                     except AttributeError:
@@ -420,9 +427,11 @@ class Document(object):
 
         return s
 
-in_file_name = sys.argv[1]
+    def save_pods(self):
+        for class_ in self.classes:
+            with open('%s.pod' % class_['classes'][0].name, 'w') as out:
+                print >>out, self.pod(class_)
 
-with open(in_file_name) as f:
-    s = f.read()
+filename = sys.argv[1]
 
-print Document(s).pod()
+Document(open(filename).read()).save_pods()
