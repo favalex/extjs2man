@@ -31,7 +31,10 @@ class Node(object):
         if plain:
             return content
 
-        if self.tag in ('root', 'div'):
+        if self.tag in ('root', 'div', 'u'):
+            return content
+        elif self.tag == 'a':
+            print >>sys.stderr, '<A> attrs=%r' % self.attrs
             return content
         elif self.tag == 'p':
             return content + '\n\n'
