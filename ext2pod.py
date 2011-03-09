@@ -109,14 +109,14 @@ def extract(marker, ats, arity=1):
         if len(result) == 1:
             return result[0]
         else:
-            raise ValueError('expected arity 1, found %d items' % len(result))
+            raise ValueError('marker %r expected arity 1, found %d items' % (marker, len(result)))
     elif arity == '?':
         if len(result) == 1:
             return result[0]
         elif len(result) == 0:
             return None
         else:
-            raise ValueError('expected arity ?, found %d items' % len(result))
+            raise ValueError('marker %r expected arity ?, found %d items' % (marker, len(result)))
     else:
         return result
 
