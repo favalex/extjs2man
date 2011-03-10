@@ -236,13 +236,15 @@ B<%(name)s> %(type)s %(default)s
 
 class Param(object):
     # {type} name text
-    re_ = re.compile('{([a-zA-Z|0-9._/]+)}\s+(\w+)\s*(.*)')
+    re_ = re.compile('({[^}]+})?\s*(\w+)\s*(.*)')
     def __init__(self, c):
         m = Param.re_.match(c)
         if m:
             self.type = m.group(1)
+            if self.type:
+                self.type = self.type.lstrip('{').rstrip('}')
             self.name = m.group(2)
-            self.text = m.group(3)
+            self.text = Text(m.group(3))
         else:
             print >>sys.stderr, 'malformed Param', c
 
