@@ -428,8 +428,14 @@ class Document(object):
         return s
 
     def save_pods(self):
+        def filename(class_):
+            # remove leading namespaces
+            # return class_.name.rsplit('.', 1)[-1]
+            # remove leading namespace
+            return class_.name.split('.', 1)[1]
+
         for class_ in self.classes:
-            with open('%s.pod' % class_['classes'][0].name, 'w') as out:
+            with open('%s.pod' % filename(class_['classes'][0]), 'w') as out:
                 print >>out, self.pod(class_)
 
 filename = sys.argv[1]
