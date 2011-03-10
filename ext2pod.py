@@ -150,6 +150,18 @@ class Comment(object):
     def __repr__(self):
         return 'Comment(' + repr(self.cs[0]) + ')'
 
+def render_params_details(params):
+    result = []
+    for param in params:
+        result.append('=item ' + param.pod())
+    return '\n\n'.join(result)
+
+def render_params_summary(params):
+    result = []
+    for param in params:
+        result.append('%s: %s' % (param.name, param.type))
+    return ', '.join(result)
+
 class Class(Comment):
     # name, extends, xtype, constructor
     def __init__(self, cs, ats):
@@ -237,6 +249,9 @@ class Param(object):
     def __repr__(self):
         return 'Param(' + repr(self.name) + ')'
 
+    def pod(self):
+        return "%s\t%s" % (self.name, self.text)
+
 class Method(Comment):
     # name, params, return, text
     def __init__(self, cs, ats):
@@ -255,12 +270,19 @@ class Method(Comment):
         return 'Method(' + repr(self.name) + ')'
 
     def pod(self):
-        self.params_summary = ', '.join([param.name for param in self.params])
+        self.params_summary = render_params_summary(self.params)
+        self.params_details = render_params_details(self.params)
 
         return """\
 B<%(name)s>(%(params_summary)s) -> %(return_)s
 
 =over 4
+
+=over 2
+
+%(params_details)s
+
+=back
 
 %(text)s
 
@@ -283,12 +305,19 @@ class Event(Comment):
         return 'Event(' + repr(self.name) + ')'
 
     def pod(self):
-        self.params_summary = ', '.join([param.name for param in self.params])
+        self.params_summary = render_params_summary(self.params)
+        self.params_details = render_params_details(self.params)
 
         return """\
-B<%(name)s> %(params_summary)s
+B<%(name)s>(%(params_summary)s)
 
 =over 4
+
+=over 2
+
+%(params_details)s
+
+=back
 
 %(text)s
 
