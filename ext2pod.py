@@ -168,6 +168,7 @@ class Class(Comment):
         self.name = extract('class', ats)
         self.extends = extract('extends', ats, '?')
         self.constructor = extract('constructor', ats, '?')
+        self.params = extract('param', ats, '*') # constructor parameters
         self.singleton = extract('singleton', ats, '?')
         self.xtype = extract('xtype', ats, '?')
 
