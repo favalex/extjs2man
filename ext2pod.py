@@ -72,7 +72,7 @@ class HTMLNodes(HTMLParser):
         if self.nodes[-1].tag == tag:
             self.nodes.pop()
         else:
-            print >>sys.stderr, 'Unbalanced close tag %r' % tag
+            print >>sys.stderr, 'Unbalanced close tag %r (expecting %r)' % (tag, self.nodes[-1].tag)
 
     def handle_data(self, data):
         cur = self.nodes[-1]
@@ -434,7 +434,7 @@ class Document(object):
                             self.classes[-1]['properties'].append(Property(lines, ats))
                         else:
                             # FIXME print error context
-                            print >>sys.stderr, 'Skipping unidentified section'
+                            print >>sys.stderr, 'Skipping unidentified section starting with %r' % s[end:end+20]
 
     def pod(self, class_):
         s = """\
