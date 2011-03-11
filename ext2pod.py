@@ -464,7 +464,10 @@ class Document(object):
             # remove leading namespaces
             # return class_.name.rsplit('.', 1)[-1]
             # remove leading namespace
-            return class_.name.split('.', 1)[1]
+            try:
+                return class_.name.split('.', 1)[1]
+            except IndexError:
+                return class_.name
 
         for class_ in self.classes:
             with open('%s.pod' % filename(class_['classes'][0]), 'w') as out:
