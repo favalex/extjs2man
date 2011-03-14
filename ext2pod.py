@@ -102,21 +102,32 @@ class HTMLNodes(HTMLParser):
 
         cur.add(data[end:])
 
-def extract(marker, ats, arity=1):
+def extract(marker, ats, arity=1, join=True):
     result = ats.pop(marker, [])
 
     if arity == 1:
         if len(result) == 1:
-            return result[0]
+            if join:
+                return result[0]
+            else:
+                return result
         else:
-            raise ValueError('marker %r expected arity 1, found %d items' % (marker, len(result)))
+            raise ValueError('marker %r expected arity 1, found %d items: %r' % (marker, len(result), result))
     elif arity == '?':
         if len(result) == 1:
-            return result[0]
+            if join:
+                return result[0]
+            else:
+                return result
         elif len(result) == 0:
-            return None
+            if join:
+                return None
+            else:
+                return []
         else:
-            raise ValueError('marker %r expected arity ?, found %d items' % (marker, len(result)))
+            raise ValueError('marker %r expected arity ?, found %d items: %r' % (marker, len(result), result))
+    elif join:
+        return '\n'.join(result)
     else:
         return result
 
@@ -144,12 +155,6 @@ class Comment(object):
     def marker(cls):
         return cls.__name__.lower()
 
-    def __init__(self, cs, ats):
-        self.cs = cs
-
-    def __repr__(self):
-        return 'Comment(' + repr(self.cs[0]) + ')'
-
 def render_params_details(params):
     result = []
     for param in params:
@@ -164,8 +169,9 @@ def render_params_summary(params):
 
 class Class(Comment):
     # name, extends, xtype, constructor
-    def __init__(self, cs, ats):
-        self.name = extract('class', ats)
+    def __init__(self, ats):
+        class_ = extract('class', ats, arity='*', join=False)
+        self.name = class_[0]
         self.extends = extract('extends', ats, '?')
         self.constructor = extract('constructor', ats, '?')
         self.params = extract('param', ats, '*') # constructor parameters
@@ -174,7 +180,7 @@ class Class(Comment):
 
         warn_if_markers('Class', ats)
 
-        self.text = Text('\n'.join(cs))
+        self.text = Text('\n'.join(class_[1:]))
 
     def __repr__(self):
         return 'Class(' + repr(self.name) + ')'
@@ -196,8 +202,9 @@ class Cfg(Comment):
     re_ = re.compile('\s*({[a-zA-Z./]+})?\s*(\w+)\s*')
     default_re = re.compile('defaults to\s+(\S+)')
 
-    def __init__(self, cs, ats):
-        cfg = extract('cfg', ats)
+    def __init__(self, ats):
+        cfgs = extract('cfg', ats, arity='*', join=False)
+        cfg = cfgs.pop(0)
 
         m = Cfg.re_.match(cfg)
         if m is None:
@@ -208,8 +215,8 @@ class Cfg(Comment):
 
         self.type = m.group(1).lstrip('{').rstrip('}') if m.group(1) else '_'
         self.name = m.group(2)
-        cs.insert(0, cfg[end:])
-        s = '\n'.join(cs)
+        cfgs.insert(0, cfg[end:])
+        s = '\n'.join(cfgs)
         self.text = Text(s)
 
         m = Cfg.default_re.search(s)
@@ -247,6 +254,9 @@ class Param(object):
             self.name = m.group(2)
             self.text = Text(m.group(3))
         else:
+            self.name = '???'
+            self.type = '???'
+            self.text = c
             print >>sys.stderr, 'malformed Param', c
 
     def __repr__(self):
@@ -257,17 +267,56 @@ class Param(object):
 
 class Method(Comment):
     # name, params, return, text
-    def __init__(self, cs, ats):
-        self.name = extract('method', ats)
+    def __init__(self, ats):
+        method = extract('method', ats, join=False)
+        self.name = method.pop(0)
         self.private = extract('private', ats, '?')
         self.static = extract('static', ats, '?')
         self.hide = extract('hide', ats, '?')
-        self.params = map(Param, extract('param', ats, '*'))
+        self.params = map(Param, extract('param', ats, '*', join=False))
         self.return_ = extract('return', ats, '?')
 
         warn_if_markers('Method', ats)
 
-        self.text = Text('\n'.join(cs))
+        self.text = Text('\n'.join(method))
+
+    def __repr__(self):
+        return 'Method(' + repr(self.name) + ')'
+
+    def pod(self):
+        self.params_summary = render_params_summary(self.params)
+        self.params_details = render_params_details(self.params)
+
+        return """\
+B<%(name)s>(%(params_summary)s) -> %(return_)s
+
+=over 4
+
+=over 2
+
+%(params_details)s
+
+=back
+
+%(text)s
+
+=back
+
+""" % self.__dict__
+
+class Private(Comment):
+    # name, params, return, text
+    def __init__(self, ats):
+        method = extract('private', ats, arity='*', join=False)
+        self.name = method.pop(0)
+        self.static = extract('static', ats, '?')
+        self.hide = extract('hide', ats, '?')
+        self.params = map(Param, extract('param', ats, '*', join=False))
+        self.return_ = extract('return', ats, '?')
+
+        warn_if_markers('Method', ats)
+
+        self.text = Text('\n'.join(method))
 
     def __repr__(self):
         return 'Method(' + repr(self.name) + ')'
@@ -295,14 +344,15 @@ B<%(name)s>(%(params_summary)s) -> %(return_)s
 
 class Event(Comment):
     # name, params, text
-    def __init__(self, cs, ats):
-        self.name = extract('event', ats)
+    def __init__(self, ats):
+        event = extract('event', ats, arity='*', join=False)
+        self.name = event.pop(0)
         self.hide = extract('hide', ats, '?')
-        self.params = map(Param, extract('param', ats, '*'))
+        self.params = map(Param, extract('param', ats, '*', join=False))
 
         warn_if_markers('Event', ats)
 
-        self.text = Text('\n'.join(cs))
+        self.text = Text('\n'.join(event))
 
     def __repr__(self):
         return 'Event(' + repr(self.name) + ')'
@@ -330,8 +380,9 @@ B<%(name)s>(%(params_summary)s)
 
 class Property(Comment):
     # name, type, text
-    def __init__(self, cs, ats):
-        self.name = extract('property', ats)
+    def __init__(self, ats):
+        property_ = extract('property', ats, arity='*', join=False)
+        self.name = property_.pop(0)
         self.private = extract('private', ats, '?')
         self.static = extract('static', ats, '?')
         self.hide = extract('hide', ats, '?')
@@ -339,7 +390,7 @@ class Property(Comment):
 
         warn_if_markers('Property', ats)
 
-        self.text = Text('\n'.join(cs))
+        self.text = Text('\n'.join(property_))
 
     def __repr__(self):
         return 'Property(' + repr(self.name) + ')'
@@ -362,6 +413,7 @@ class Document(object):
         (Cfg, 'cfgs', 'CONFIGURATION'),
         (Property, 'properties', 'PROPERTIES'),
         (Method, 'methods', 'METHODS'),
+        (Private, 'private', 'PRIVATE'),
         (Event, 'events', 'EVENTS'),
     ]
 
@@ -375,6 +427,7 @@ class Document(object):
             'cfgs': [],
             'events': [],
             'methods': [],
+            'private': [],
             'properties': [],
         }
 
@@ -399,7 +452,6 @@ class Document(object):
         for p in pyparsing.cStyleComment('lalala').scanString(s):
             c = p[0][0]
             if c.startswith('/**'):
-                lines = []
                 ats = defaultdict(list)
 
                 for line in remove_stars(c).split('\n'):
@@ -407,9 +459,12 @@ class Document(object):
                         at_end = line.find(' ') # FIXME any space
                         if at_end == -1:
                             at_end = len(line)
-                        ats[line[1:at_end]].append(line[at_end+1:])
+                        at = line[1:at_end]
+                        if not at in ('extends',):
+                            current_at = ats[at]
+                        current_at.append(line[at_end+1:])
                     else:
-                        lines.append(line)
+                        current_at.append(line)
 
                 found = False
                 for C, attname, _ in self.Sections:
@@ -418,7 +473,7 @@ class Document(object):
 
                     if C.marker() in ats:
                         found = True
-                        self.classes[-1][attname].append(C(lines, ats))
+                        self.classes[-1][attname].append(C(ats))
                         break
 
                 if not found:
@@ -427,12 +482,12 @@ class Document(object):
                     name = match(s, end, function_re)
                     if name:
                         ats['method'] = [name]
-                        self.classes[-1]['methods'].append(Method(lines, ats))
+                        self.classes[-1]['methods'].append(Method(ats))
                     else:
                         name = match(s, end, identifier_re)
                         if name:
                             ats['property'] = [name]
-                            self.classes[-1]['properties'].append(Property(lines, ats))
+                            self.classes[-1]['properties'].append(Property(ats))
                         else:
                             # FIXME print error context
                             print >>sys.stderr, 'Skipping unidentified section starting with %r' % s[end:end+20]
@@ -450,9 +505,9 @@ class Document(object):
                 s += "\n\n=head2 %s\n\n" % section_header
 
                 for item in sorted(class_[attname], key=lambda i: i.name):
-                    try:
+                    if hasattr(item, 'pod'):
                         s += item.pod()
-                    except AttributeError:
+                    else:
                         print >>sys.stderr, repr(item)
 
         s += "=cut"
