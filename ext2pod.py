@@ -449,48 +449,67 @@ class Document(object):
             else:
                 return None
 
+        class At(object):
+            def __init__(self, name, line=None):
+                self.name = name
+                self.lines = []
+                if line:
+                    self.lines.append(line)
+
+            def append(self, line):
+                self.lines.append(line)
+
+            def __repr__(self):
+                if len(self.lines) == 0:
+                    return '%s' % self.name
+                elif len(self.lines) == 1:
+                    return '%s: [%r]' % (self.name, self.lines[0])
+                else:
+                    return '%s: [%r, ...]' % (self.name, self.lines[0])
+
+        def split(line):
+            at_end = line.find(' ') # FIXME any space
+            if at_end == -1:
+                return line[1:], ''
+            else:
+                return line[1:at_end], line[at_end+1:]
+
+        def rfind_by(xs, pred):
+            for x in reversed(xs):
+                if pred(x):
+                    return x
+
         for p in pyparsing.cStyleComment('lalala').scanString(s):
             c = p[0][0]
             if c.startswith('/**'):
-                ats = defaultdict(list)
+                ats = []
 
                 for line in remove_stars(c).split('\n'):
                     if line.startswith('@'):
-                        at_end = line.find(' ') # FIXME any space
-                        if at_end == -1:
-                            at_end = len(line)
-                        at = line[1:at_end]
-                        if not at in ('extends',):
-                            current_at = ats[at]
-                        current_at.append(line[at_end+1:])
+                        at, line = split(line)
+                        ats.append(At(at, line))
                     else:
-                        current_at.append(line)
+                        current = rfind_by(ats, lambda at: at.name not in ('extends',))
+                        if not current:
+                            current = At('_')
+                        current.append(line)
 
-                found = False
-                for C, attname, _ in self.Sections:
-                    if 'class' in ats:
-                        self.classes.append(self.new_class())
-
-                    if C.marker() in ats:
-                        found = True
-                        self.classes[-1][attname].append(C(ats))
-                        break
-
-                if not found:
+                # TODO
+                # if not cfg or class or property in ats
+                if True:
+                    # collect the js identifier following this block of comments
                     end = p[2]
 
                     name = match(s, end, function_re)
                     if name:
-                        ats['method'] = [name]
-                        self.classes[-1]['methods'].append(Method(ats))
+                        ats.insert(0, At('_method', name))
                     else:
                         name = match(s, end, identifier_re)
                         if name:
-                            ats['property'] = [name]
-                            self.classes[-1]['properties'].append(Property(ats))
-                        else:
-                            # FIXME print error context
-                            print >>sys.stderr, 'Skipping unidentified section starting with %r' % s[end:end+20]
+                            ats.insert(0, At('_property', name))
+
+                import pprint
+                pprint.pprint(ats)
 
     def pod(self, class_):
         s = """\
