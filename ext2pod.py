@@ -102,39 +102,6 @@ class HTMLNodes(HTMLParser):
 
         cur.add(data[end:])
 
-def extract(marker, ats, arity=1, join=True):
-    result = ats.pop(marker, [])
-
-    if arity == 1:
-        if len(result) == 1:
-            if join:
-                return result[0]
-            else:
-                return result
-        else:
-            raise ValueError('marker %r expected arity 1, found %d items: %r' % (marker, len(result), result))
-    elif arity == '?':
-        if len(result) == 1:
-            if join:
-                return result[0]
-            else:
-                return result
-        elif len(result) == 0:
-            if join:
-                return None
-            else:
-                return []
-        else:
-            raise ValueError('marker %r expected arity ?, found %d items: %r' % (marker, len(result), result))
-    elif join:
-        return '\n'.join(result)
-    else:
-        return result
-
-def warn_if_markers(section, ats):
-    if ats:
-        print >>sys.stderr, 'warn: unprocessed markers', ats.keys(), 'in section', section
-
 class Text(object):
     def __init__(self, s):
         self.parse(s)
@@ -150,11 +117,6 @@ class Text(object):
     def __repr__(self):
         return 'Text(' + repr(self.text) + ')'
 
-class Comment(object):
-    @classmethod
-    def marker(cls):
-        return cls.__name__.lower()
-
 def render_params_details(params):
     result = []
     for param in params:
@@ -167,26 +129,43 @@ def render_params_summary(params):
         result.append('%s: %s' % (param.name, param.type))
     return ', '.join(result)
 
-class Class(Comment):
-    # name, extends, xtype, constructor
-    def __init__(self, ats):
-        class_ = extract('class', ats, arity='*', join=False)
-        self.name = class_[0]
-        self.extends = extract('extends', ats, '?')
-        self.constructor = extract('constructor', ats, '?')
-        self.params = extract('param', ats, '*') # constructor parameters
-        self.singleton = extract('singleton', ats, '?')
-        self.xtype = extract('xtype', ats, '?')
+class Dummy(object):
+    def __init__(self, lines):
+        self.name = 'dummy'
+        self.children = defaultdict(list)
 
-        warn_if_markers('Class', ats)
+    def __repr__(self):
+        return 'Dummy(' + repr(self.name) + ')'
 
-        self.text = Text('\n'.join(class_[1:]))
+class Class(object):
+    def __init__(self, lines):
+        self.name = lines[0]
+        self.text = Text('\n'.join(lines[1:]))
+        self.children = defaultdict(list)
 
     def __repr__(self):
         return 'Class(' + repr(self.name) + ')'
 
+    def append_child(self, child):
+        Level1 = {
+            'extends': Dummy,
+            'cfg': Cfg,
+            'event': Event,
+            'method': Method,
+            'property': Property,
+            'constructor': Dummy,
+        }
+
+        if child.name in Level1.keys():
+            self.latest_child = child
+            self.children[child.name].append(Level1[child.name](child.lines))
+        else:
+            try:
+                self.latest_child.append(child)
+            except IndexError:
+                print 'orphan', child.name
+
     def pod(self):
-        # FIXME constructor, singleton
         return """\
 B<%(name)s> %(extends)s %(xtype)s
 
@@ -198,13 +177,12 @@ B<%(name)s> %(extends)s %(xtype)s
 
 """ % self.__dict__
 
-class Cfg(Comment):
+class Cfg(object):
     re_ = re.compile('\s*({[a-zA-Z./]+})?\s*(\w+)\s*')
     default_re = re.compile('defaults to\s+(\S+)')
 
-    def __init__(self, ats):
-        cfgs = extract('cfg', ats, arity='*', join=False)
-        cfg = cfgs.pop(0)
+    def __init__(self, lines):
+        cfg = lines[0]
 
         m = Cfg.re_.match(cfg)
         if m is None:
@@ -215,8 +193,8 @@ class Cfg(Comment):
 
         self.type = m.group(1).lstrip('{').rstrip('}') if m.group(1) else '_'
         self.name = m.group(2)
-        cfgs.insert(0, cfg[end:])
-        s = '\n'.join(cfgs)
+        lines.insert(0, cfg[end:])
+        s = '\n'.join(lines)
         self.text = Text(s)
 
         m = Cfg.default_re.search(s)
@@ -265,27 +243,19 @@ class Param(object):
     def pod(self):
         return "%s\t%s" % (self.name, self.text)
 
-class Method(Comment):
-    # name, params, return, text
-    def __init__(self, ats):
-        method = extract('method', ats, join=False)
-        self.name = method.pop(0)
-        self.private = extract('private', ats, '?')
-        self.static = extract('static', ats, '?')
-        self.hide = extract('hide', ats, '?')
-        self.params = map(Param, extract('param', ats, '*', join=False))
-        self.return_ = extract('return', ats, '?')
+class Method(object):
+    def __init__(self, lines):
+        self.name = lines[0]
 
-        warn_if_markers('Method', ats)
-
-        self.text = Text('\n'.join(method))
+        self.text = Text('\n'.join(lines[1:]))
 
     def __repr__(self):
         return 'Method(' + repr(self.name) + ')'
 
     def pod(self):
-        self.params_summary = render_params_summary(self.params)
-        self.params_details = render_params_details(self.params)
+        self.params_summary = 'FIXME' # render_params_summary(self.params)
+        self.params_details = 'FIXME' # render_params_details(self.params)
+        self.return_ = 'FIXME'
 
         return """\
 B<%(name)s>(%(params_summary)s) -> %(return_)s
@@ -304,62 +274,19 @@ B<%(name)s>(%(params_summary)s) -> %(return_)s
 
 """ % self.__dict__
 
-class Private(Comment):
-    # name, params, return, text
-    def __init__(self, ats):
-        method = extract('private', ats, arity='*', join=False)
-        self.name = method.pop(0)
-        self.static = extract('static', ats, '?')
-        self.hide = extract('hide', ats, '?')
-        self.params = map(Param, extract('param', ats, '*', join=False))
-        self.return_ = extract('return', ats, '?')
-
-        warn_if_markers('Method', ats)
-
-        self.text = Text('\n'.join(method))
-
-    def __repr__(self):
-        return 'Method(' + repr(self.name) + ')'
-
-    def pod(self):
-        self.params_summary = render_params_summary(self.params)
-        self.params_details = render_params_details(self.params)
-
-        return """\
-B<%(name)s>(%(params_summary)s) -> %(return_)s
-
-=over 4
-
-=over 2
-
-%(params_details)s
-
-=back
-
-%(text)s
-
-=back
-
-""" % self.__dict__
-
-class Event(Comment):
+class Event(object):
     # name, params, text
-    def __init__(self, ats):
-        event = extract('event', ats, arity='*', join=False)
-        self.name = event.pop(0)
-        self.hide = extract('hide', ats, '?')
-        self.params = map(Param, extract('param', ats, '*', join=False))
+    def __init__(self, lines):
+        self.name = lines[0]
 
-        warn_if_markers('Event', ats)
-
-        self.text = Text('\n'.join(event))
+        self.text = Text('\n'.join(lines[1:]))
 
     def __repr__(self):
         return 'Event(' + repr(self.name) + ')'
 
     def pod(self):
-        self.params_summary = render_params_summary(self.params)
-        self.params_details = render_params_details(self.params)
+        self.params_summary = 'FIXME' # render_params_summary(self.params)
+        self.params_details = 'FIXME' # render_params_details(self.params)
 
         return """\
 B<%(name)s>(%(params_summary)s)
@@ -378,24 +305,16 @@ B<%(name)s>(%(params_summary)s)
 
 """ % self.__dict__
 
-class Property(Comment):
-    # name, type, text
-    def __init__(self, ats):
-        property_ = extract('property', ats, arity='*', join=False)
-        self.name = property_.pop(0)
-        self.private = extract('private', ats, '?')
-        self.static = extract('static', ats, '?')
-        self.hide = extract('hide', ats, '?')
-        self.type = extract('type', ats, '?') # FIXME check if this is the correct arity
-
-        warn_if_markers('Property', ats)
-
-        self.text = Text('\n'.join(property_))
+class Property(object):
+    def __init__(self, lines):
+        self.name = lines[0]
+        self.text = Text('\n'.join(lines[1:]))
 
     def __repr__(self):
         return 'Property(' + repr(self.name) + ')'
 
     def pod(self):
+        self.type = 'FIXME'
         return """\
 B<%(name)s> %(type)s
 
@@ -409,27 +328,16 @@ B<%(name)s> %(type)s
 
 class Document(object):
     Sections = [
-        (Class, 'classes', 'DESCRIPTION'),
-        (Cfg, 'cfgs', 'CONFIGURATION'),
-        (Property, 'properties', 'PROPERTIES'),
-        (Method, 'methods', 'METHODS'),
-        (Private, 'private', 'PRIVATE'),
-        (Event, 'events', 'EVENTS'),
+        (Class, 'class', 'DESCRIPTION'),
+        (Cfg, 'cfg', 'CONFIGURATION'),
+        (Property, 'property', 'PROPERTIES'),
+        (Method, 'method', 'METHODS'),
+        (Event, 'event', 'EVENTS'),
     ]
 
     def __init__(self, s):
         self.classes = []
         self.parse(s)
-
-    def new_class(self):
-        return {
-            'classes': [],
-            'cfgs': [],
-            'events': [],
-            'methods': [],
-            'private': [],
-            'properties': [],
-        }
 
     def parse(self, s):
         star_re = re.compile('^\s*\*\s*', re.MULTILINE)
@@ -461,7 +369,13 @@ class Document(object):
                 self.lines.append(line)
 
             def append_child(self, child):
-                self.children.append(child)
+                if child.name not in ('extends', 'cfg', 'event', 'method', 'property', 'constructor'):
+                    try:
+                        self.children[-1].append(child)
+                    except IndexError:
+                        print 'orphan', child.name
+                else:
+                    self.children.append(child)
 
             def __repr__(self):
                 if len(self.lines) == 0:
@@ -486,39 +400,45 @@ class Document(object):
         ats = []
         for p in pyparsing.cStyleComment('lalala').scanString(s):
             c = p[0][0]
+            start_of_this_comment = len(ats)
+            ats_in_this_comment = set()
             if c.startswith('/**'):
                 for line in remove_stars(c).split('\n'):
                     if line.startswith('@'):
                         at, line = split(line)
                         ats.append(At(at, line))
+                        ats_in_this_comment.add(at)
                     else:
                         current = rfind_by(ats, lambda at: at.name not in ('extends',))
                         if not current:
                             current = At('_')
                         current.append(line)
 
-                if not set(at.name for at in ats) & set(['cfg', 'class', 'property']):
+                if not ats_in_this_comment & set(['cfg', 'class', 'property']):
                     # collect the js identifier following this block of comments
                     end = p[2]
 
                     name = match(s, end, function_re)
                     if name:
-                        ats.insert(0, At('method', name))
+                        ats.insert(start_of_this_comment, At('method', name))
                     else:
                         name = match(s, end, identifier_re)
                         if name:
-                            ats.insert(0, At('_property', name))
+                            ats.insert(start_of_this_comment, At('_property', name))
 
         import pprint
         pprint.pprint(ats)
 
         # build tree starting from flat ats
-        classes = []
+        self.classes = []
         for at in ats:
             if at.name == 'class':
-                classes.append(at)
+                self.classes.append(Class(at.lines))
             else:
-                classes[-1].append_child(at)
+                try:
+                    self.classes[-1].append_child(at)
+                except IndexError:
+                    pass
 
     def pod(self, class_):
         s = """\
@@ -529,10 +449,10 @@ class Document(object):
 """
 
         for _, attname, section_header in self.Sections:
-            if class_[attname]:
+            if class_.children[attname]:
                 s += "\n\n=head2 %s\n\n" % section_header
 
-                for item in sorted(class_[attname], key=lambda i: i.name):
+                for item in sorted(class_.children[attname], key=lambda i: i.name):
                     if hasattr(item, 'pod'):
                         s += item.pod()
                     else:
@@ -553,7 +473,7 @@ class Document(object):
                 return class_.name
 
         for class_ in self.classes:
-            with open('%s.pod' % filename(class_['classes'][0]), 'w') as out:
+            with open('%s.pod' % filename(class_), 'w') as out:
                 print >>out, self.pod(class_)
 
 filename = sys.argv[1]
