@@ -453,11 +453,15 @@ class Document(object):
             def __init__(self, name, line=None):
                 self.name = name
                 self.lines = []
+                self.children = []
                 if line:
                     self.lines.append(line)
 
             def append(self, line):
                 self.lines.append(line)
+
+            def append_child(self, child):
+                self.children.append(child)
 
             def __repr__(self):
                 if len(self.lines) == 0:
@@ -479,11 +483,10 @@ class Document(object):
                 if pred(x):
                     return x
 
+        ats = []
         for p in pyparsing.cStyleComment('lalala').scanString(s):
             c = p[0][0]
             if c.startswith('/**'):
-                ats = []
-
                 for line in remove_stars(c).split('\n'):
                     if line.startswith('@'):
                         at, line = split(line)
@@ -494,22 +497,28 @@ class Document(object):
                             current = At('_')
                         current.append(line)
 
-                # TODO
-                # if not cfg or class or property in ats
-                if True:
+                if not set(at.name for at in ats) & set(['cfg', 'class', 'property']):
                     # collect the js identifier following this block of comments
                     end = p[2]
 
                     name = match(s, end, function_re)
                     if name:
-                        ats.insert(0, At('_method', name))
+                        ats.insert(0, At('method', name))
                     else:
                         name = match(s, end, identifier_re)
                         if name:
                             ats.insert(0, At('_property', name))
 
-                import pprint
-                pprint.pprint(ats)
+        import pprint
+        pprint.pprint(ats)
+
+        # build tree starting from flat ats
+        classes = []
+        for at in ats:
+            if at.name == 'class':
+                classes.append(at)
+            else:
+                classes[-1].append_child(at)
 
     def pod(self, class_):
         s = """\
