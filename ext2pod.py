@@ -157,11 +157,11 @@ class Class(object):
         }
 
         if child.name in Level1.keys():
-            self.latest_child = child
+            self.last_child = child
             self.children[child.name].append(Level1[child.name](child.lines))
         else:
             try:
-                self.latest_child.append(child)
+                self.last_child.append(child)
             except IndexError:
                 print 'orphan', child.name
 
@@ -326,13 +326,19 @@ B<%(name)s> %(type)s
 
 """ % self.__dict__
 
+at_options = defaultdict(lambda: (False, False))
+at_options['class'] = True, True
+at_options['event'] = True, True
+at_options['cfg'] = True, True
+at_options['property'] = True, True
+
 class Document(object):
     Sections = [
-        (Class, 'class', 'DESCRIPTION'),
-        (Cfg, 'cfg', 'CONFIGURATION'),
-        (Property, 'property', 'PROPERTIES'),
-        (Method, 'method', 'METHODS'),
-        (Event, 'event', 'EVENTS'),
+        ('class', 'DESCRIPTION'),
+        ('cfg', 'CONFIGURATION'),
+        ('property', 'PROPERTIES'),
+        ('method', 'METHODS'),
+        ('event', 'EVENTS'),
     ]
 
     def __init__(self, s):
@@ -392,27 +398,27 @@ class Document(object):
             else:
                 return line[1:at_end], line[at_end+1:]
 
-        def rfind_by(xs, pred):
-            for x in reversed(xs):
-                if pred(x):
-                    return x
-
         ats = []
         for p in pyparsing.cStyleComment('lalala').scanString(s):
             c = p[0][0]
             start_of_this_comment = len(ats)
             ats_in_this_comment = set()
             if c.startswith('/**'):
+                cursor = None # where to append lines not starting with @
                 for line in remove_stars(c).split('\n'):
                     if line.startswith('@'):
                         at, line = split(line)
-                        ats.append(At(at, line))
                         ats_in_this_comment.add(at)
+                        at = At(at, line)
+                        ats.append(at)
+                        _, multiline = at_options[at.name]
+                        if multiline:
+                            cursor = at
                     else:
-                        current = rfind_by(ats, lambda at: at.name not in ('extends',))
-                        if not current:
-                            current = At('_')
-                        current.append(line)
+                        if not cursor:
+                            cursor = At('_') # dummy at to collect lines if no real at was seen yet
+                            ats.append(cursor)
+                        cursor.append(line)
 
                 if not ats_in_this_comment & set(['cfg', 'class', 'property']):
                     # collect the js identifier following this block of comments
@@ -420,25 +426,57 @@ class Document(object):
 
                     name = match(s, end, function_re)
                     if name:
-                        ats.insert(start_of_this_comment, At('method', name))
+                        if ats[start_of_this_comment].name == '_':
+                            ats[start_of_this_comment].name = 'method'
+                            ats[start_of_this_comment].lines.insert(0, name)
+                        else:
+                            ats.insert(start_of_this_comment, At('method', name))
                     else:
                         name = match(s, end, identifier_re)
                         if name:
                             ats.insert(start_of_this_comment, At('_property', name))
 
+                if ats[start_of_this_comment].name == '_':
+                    for leader_index in range(start_of_this_comment, len(ats)):
+                        if ats[leader_index].name in ('cfg', 'class', 'property'):
+                            pass
+
         import pprint
         pprint.pprint(ats)
+
+
+
+    def append_child(self, child):
+        Level1 = {
+            'extends': Dummy,
+            'cfg': Cfg,
+            'event': Event,
+            'method': Method,
+            'property': Property,
+            'constructor': Dummy,
+        }
+
+        if child.name in Level1.keys():
+            self.last_child = child
+            self.children[child.name].append(Level1[child.name](child.lines))
+        else:
+            try:
+                self.last_child.append(child)
+            except IndexError:
+                print 'orphan', child.name
+
+
 
         # build tree starting from flat ats
         self.classes = []
         for at in ats:
             if at.name == 'class':
-                self.classes.append(Class(at.lines))
+                at = Class(at.lines)
+                cursor = at
+                self.classes.append(at)
             else:
-                try:
-                    self.classes[-1].append_child(at)
-                except IndexError:
-                    pass
+                if not cursor:
+                    cursor = None # FIXME
 
     def pod(self, class_):
         s = """\
@@ -448,7 +486,7 @@ class Document(object):
 
 """
 
-        for _, attname, section_header in self.Sections:
+        for attname, section_header in self.Sections:
             if class_.children[attname]:
                 s += "\n\n=head2 %s\n\n" % section_header
 
