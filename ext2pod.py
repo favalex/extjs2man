@@ -129,41 +129,22 @@ def render_params_summary(params):
         result.append('%s: %s' % (param.name, param.type))
     return ', '.join(result)
 
-class Dummy(object):
-    def __init__(self, lines):
-        self.name = 'dummy'
+class DocNode(object):
+    def __init__(self):
         self.children = defaultdict(list)
 
-    def __repr__(self):
-        return 'Dummy(' + repr(self.name) + ')'
+    def append(self, node):
+        self.children[type(node)].append(node)
 
-class Class(object):
+class Class(DocNode):
     def __init__(self, lines):
+        super(Class, self).__init__()
+
         self.name = lines[0]
         self.text = Text('\n'.join(lines[1:]))
-        self.children = defaultdict(list)
 
     def __repr__(self):
         return 'Class(' + repr(self.name) + ')'
-
-    def append_child(self, child):
-        Level1 = {
-            'extends': Dummy,
-            'cfg': Cfg,
-            'event': Event,
-            'method': Method,
-            'property': Property,
-            'constructor': Dummy,
-        }
-
-        if child.name in Level1.keys():
-            self.last_child = child
-            self.children[child.name].append(Level1[child.name](child.lines))
-        else:
-            try:
-                self.last_child.append(child)
-            except IndexError:
-                print 'orphan', child.name
 
     def pod(self):
         return """\
@@ -177,12 +158,19 @@ B<%(name)s> %(extends)s %(xtype)s
 
 """ % self.__dict__
 
-class Cfg(object):
+class Cfg(DocNode):
     re_ = re.compile('\s*({[a-zA-Z./]+})?\s*(\w+)\s*')
     default_re = re.compile('defaults to\s+(\S+)')
 
     def __init__(self, lines):
+        super(Cfg, self).__init__()
+
         cfg = lines[0]
+
+        self.name = 'FIXME'
+        self.type = 'FIXME'
+        self.default = 'FIXME'
+        self.text = 'FIXME'
 
         m = Cfg.re_.match(cfg)
         if m is None:
@@ -220,10 +208,12 @@ B<%(name)s> %(type)s %(default)s
 
 """ % self.__dict__
 
-class Param(object):
+class Param(DocNode):
     # {type} name text
     re_ = re.compile('({[^}]+})?\s*(\w+)\s*(.*)')
     def __init__(self, c):
+        super(Param, self).__init__()
+
         m = Param.re_.match(c)
         if m:
             self.type = m.group(1)
@@ -243,8 +233,10 @@ class Param(object):
     def pod(self):
         return "%s\t%s" % (self.name, self.text)
 
-class Method(object):
+class Method(DocNode):
     def __init__(self, lines):
+        super(Method, self).__init__()
+
         self.name = lines[0]
 
         self.text = Text('\n'.join(lines[1:]))
@@ -274,11 +266,11 @@ B<%(name)s>(%(params_summary)s) -> %(return_)s
 
 """ % self.__dict__
 
-class Event(object):
-    # name, params, text
+class Event(DocNode):
     def __init__(self, lines):
-        self.name = lines[0]
+        super(Event, self).__init__()
 
+        self.name = lines[0]
         self.text = Text('\n'.join(lines[1:]))
 
     def __repr__(self):
@@ -305,8 +297,10 @@ B<%(name)s>(%(params_summary)s)
 
 """ % self.__dict__
 
-class Property(object):
+class Property(DocNode):
     def __init__(self, lines):
+        super(Property, self).__init__()
+
         self.name = lines[0]
         self.text = Text('\n'.join(lines[1:]))
 
@@ -326,19 +320,109 @@ B<%(name)s> %(type)s
 
 """ % self.__dict__
 
-at_options = defaultdict(lambda: (False, False))
-at_options['class'] = True, True
-at_options['event'] = True, True
-at_options['cfg'] = True, True
-at_options['property'] = True, True
+class Generic(DocNode):
+    def __init__(self, lines):
+        super(Generic, self).__init__()
+
+        self.name = '<generic>'
+        self.text = Text('\n'.join(lines))
+
+    def pod(self):
+        return str(self.text)
+
+at_options = defaultdict(lambda: (2, False, Generic))
+at_options['class'] = 0, True, Class
+at_options['event'] = 1, True, Event
+at_options['cfg'] = 1, True, Cfg
+at_options['property'] = 1, True, Property
+
+class At(object):
+    def __init__(self, name, line=None):
+        self.name = name
+        self.lines = []
+        if line:
+            self.lines.append(line)
+
+    def append(self, line):
+        self.lines.append(line)
+
+    def __repr__(self):
+        if len(self.lines) == 0:
+            return '%s' % self.name
+        elif len(self.lines) == 1:
+            return '%s: [%r]' % (self.name, self.lines[0])
+        else:
+            return '%s: [%r, ...]' % (self.name, self.lines[0])
+
+star_re = re.compile('^\s*\*\s*', re.MULTILINE)
+function_re = re.compile('\s*(\w+)\s*:\s*function')
+
+def parse_comment(c, s, end):
+    def remove_stars(c):
+        # remove /**, *s and */
+        c = re.sub('^/\*\*\s*', '', c)
+        c = re.sub('\s*\*/$', '', c)
+        return star_re.sub('', c)
+
+    def match(s, start, re_):
+        m = re_.match(s, start)
+        if m:
+            return m.group(1)
+        else:
+            return None
+
+    def split(line):
+        at_end = line.find(' ') # FIXME any space
+        if at_end == -1:
+            return line[1:], ''
+        else:
+            return line[1:at_end], line[at_end+1:]
+
+    ats = []
+
+    cursor = None # where to append lines not starting with @
+    for line in remove_stars(c).split('\n'):
+        if line.startswith('@'):
+            at, line = split(line)
+            at = At(at, line)
+            ats.append(at)
+            _, multiline, _ = at_options[at.name]
+            if multiline:
+                cursor = at
+        else:
+            if not cursor:
+                cursor = At('_') # dummy at to collect lines if no real at was seen yet
+                ats.insert(0, cursor)
+            cursor.append(line)
+
+    if not set([at.name for at in ats]) & set(['cfg', 'class', 'property']):
+        # collect the js identifier following this block of comments
+        name = match(s, end, function_re)
+        if name:
+            ats.append(At('method', name))
+        else:
+            print >>sys.stderr, 'Comment doesn\'t contain any leader'
+
+    # merge the lines of the leader into the dummy element
+    if ats[0].name == '_':
+        for leader_index, leader in enumerate(ats):
+            if leader.name in ('cfg', 'class', 'property', 'method'):
+                ats[0].name = leader.name
+                ats[0].lines.insert(0, leader.lines[0])
+                ats[0].lines.extend(leader.lines[1:]) # does this happen?
+
+                ats[leader_index] = None
+
+    return filter(None, ats)
 
 class Document(object):
     Sections = [
-        ('class', 'DESCRIPTION'),
-        ('cfg', 'CONFIGURATION'),
-        ('property', 'PROPERTIES'),
-        ('method', 'METHODS'),
-        ('event', 'EVENTS'),
+        (Generic, 'DEBUGGING'),
+        (Class, 'DESCRIPTION'),
+        (Cfg, 'CONFIGURATION'),
+        (Property, 'PROPERTIES'),
+        (Method, 'METHODS'),
+        (Event, 'EVENTS'),
     ]
 
     def __init__(self, s):
@@ -346,137 +430,32 @@ class Document(object):
         self.parse(s)
 
     def parse(self, s):
-        star_re = re.compile('^\s*\*\s*', re.MULTILINE)
-        function_re = re.compile('\s*(\w+)\s*:\s*function')
-        identifier_re = re.compile('\s*(\w+)')
-
-        def remove_stars(c):
-            # remove /**, *s and */
-            c = re.sub('^/\*\*\s*', '', c)
-            c = re.sub('\s*\*/$', '', c)
-            return star_re.sub('', c)
-
-        def match(s, start, re_):
-            m = re_.match(s, start)
-            if m:
-                return m.group(1)
-            else:
-                return None
-
-        class At(object):
-            def __init__(self, name, line=None):
-                self.name = name
-                self.lines = []
-                self.children = []
-                if line:
-                    self.lines.append(line)
-
-            def append(self, line):
-                self.lines.append(line)
-
-            def append_child(self, child):
-                if child.name not in ('extends', 'cfg', 'event', 'method', 'property', 'constructor'):
-                    try:
-                        self.children[-1].append(child)
-                    except IndexError:
-                        print 'orphan', child.name
-                else:
-                    self.children.append(child)
-
-            def __repr__(self):
-                if len(self.lines) == 0:
-                    return '%s' % self.name
-                elif len(self.lines) == 1:
-                    return '%s: [%r]' % (self.name, self.lines[0])
-                else:
-                    return '%s: [%r, ...]' % (self.name, self.lines[0])
-
-        def split(line):
-            at_end = line.find(' ') # FIXME any space
-            if at_end == -1:
-                return line[1:], ''
-            else:
-                return line[1:at_end], line[at_end+1:]
-
         ats = []
         for p in pyparsing.cStyleComment('lalala').scanString(s):
             c = p[0][0]
-            start_of_this_comment = len(ats)
-            ats_in_this_comment = set()
             if c.startswith('/**'):
-                cursor = None # where to append lines not starting with @
-                for line in remove_stars(c).split('\n'):
-                    if line.startswith('@'):
-                        at, line = split(line)
-                        ats_in_this_comment.add(at)
-                        at = At(at, line)
-                        ats.append(at)
-                        _, multiline = at_options[at.name]
-                        if multiline:
-                            cursor = at
-                    else:
-                        if not cursor:
-                            cursor = At('_') # dummy at to collect lines if no real at was seen yet
-                            ats.append(cursor)
-                        cursor.append(line)
-
-                if not ats_in_this_comment & set(['cfg', 'class', 'property']):
-                    # collect the js identifier following this block of comments
-                    end = p[2]
-
-                    name = match(s, end, function_re)
-                    if name:
-                        if ats[start_of_this_comment].name == '_':
-                            ats[start_of_this_comment].name = 'method'
-                            ats[start_of_this_comment].lines.insert(0, name)
-                        else:
-                            ats.insert(start_of_this_comment, At('method', name))
-                    else:
-                        name = match(s, end, identifier_re)
-                        if name:
-                            ats.insert(start_of_this_comment, At('_property', name))
-
-                if ats[start_of_this_comment].name == '_':
-                    for leader_index in range(start_of_this_comment, len(ats)):
-                        if ats[leader_index].name in ('cfg', 'class', 'property'):
-                            pass
+                ats.extend(parse_comment(c, s, p[2]))
 
         import pprint
         pprint.pprint(ats)
 
-
-
-    def append_child(self, child):
-        Level1 = {
-            'extends': Dummy,
-            'cfg': Cfg,
-            'event': Event,
-            'method': Method,
-            'property': Property,
-            'constructor': Dummy,
-        }
-
-        if child.name in Level1.keys():
-            self.last_child = child
-            self.children[child.name].append(Level1[child.name](child.lines))
-        else:
-            try:
-                self.last_child.append(child)
-            except IndexError:
-                print 'orphan', child.name
-
-
-
         # build tree starting from flat ats
         self.classes = []
+        cursor = self.classes
         for at in ats:
-            if at.name == 'class':
-                at = Class(at.lines)
-                cursor = at
-                self.classes.append(at)
-            else:
-                if not cursor:
-                    cursor = None # FIXME
+            level, _, class_ = at_options[at.name]
+            node = class_(at.lines)
+
+            if level == 0:
+                cursor = self.classes
+            elif level == 1:
+                cursor = self.classes[-1]
+
+            cursor.append(node)
+
+        pprint.pprint(self.classes)
+        for class_ in self.classes:
+            pprint.pprint(class_.children)
 
     def pod(self, class_):
         s = """\
@@ -486,11 +465,11 @@ class Document(object):
 
 """
 
-        for attname, section_header in self.Sections:
-            if class_.children[attname]:
+        for section_class, section_header in self.Sections:
+            if class_.children[section_class]:
                 s += "\n\n=head2 %s\n\n" % section_header
 
-                for item in sorted(class_.children[attname], key=lambda i: i.name):
+                for item in sorted(class_.children[section_class], key=lambda i: i.name):
                     if hasattr(item, 'pod'):
                         s += item.pod()
                     else:
