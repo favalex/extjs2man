@@ -514,6 +514,9 @@ class Document(object):
                 s += "\n\n=head1 %s\n\n" % section_header
 
                 for item in sorted(class_.children[section_class], key=lambda i: getattr(i, 'name', '')):
+                    if item.get_generic('private'):
+                        continue
+
                     if hasattr(item, 'pod'):
                         s += item.pod()
                     else:
