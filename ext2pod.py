@@ -1,7 +1,7 @@
 #! /usr/bin/python
 # -*- coding: utf-8 -*-
 
-import sys, re
+import sys, re, os
 import pyparsing
 from HTMLParser import HTMLParser
 from collections import defaultdict
@@ -532,5 +532,9 @@ class Document(object):
                 print >>out, self.pod(class_)
 
 filename = sys.argv[1]
+
+if os.path.basename(filename).startswith('ext-lang-'):
+    print 'Skipping translation file', os.path.basename(filename)
+    sys.exit(0)
 
 Document(open(filename).read()).save_pods()
