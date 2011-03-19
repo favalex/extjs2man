@@ -300,7 +300,7 @@ class Param(DocNode):
         return 'Param(' + repr(self.name) + ')'
 
     def pod(self):
-        return "%s\t%s" % (self.name, self.text)
+        return "%s %s" % (self.name, self.text)
 
 class Method(DocNode):
     def __init__(self, name, lines):
