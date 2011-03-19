@@ -439,7 +439,7 @@ def parse_comment(c, s, end):
         # collect the js identifier following this block of comments
         name = match(s, end, function_re)
         if name:
-            ats.append(At('method', name))
+            ats.insert(0, At('method', name))
         else:
             if any(at.name == 'return' for at in ats):
                 what = 'method'
@@ -448,21 +448,30 @@ def parse_comment(c, s, end):
 
             name = match(s, end, identifier_re)
             if name:
-                ats.append(At(what, name))
+                ats.insert(0, At(what, name))
             else:
                 print 'failed match of %r' % s[end:end+20]
                 # print >>sys.stderr, 'Comment doesn\'t contain any level 1 command'
 
     # merge the lines of the leader into the dummy element
-    if ats[0].name == '_':
-        for index, at in enumerate(ats):
-            if at.name in level1_commands:
-                ats[0].name = at.name
-                if at.lines:
-                    ats[0].lines.insert(0, at.lines[0])
-                    ats[0].lines.extend(at.lines[1:]) # does this happen?
 
-                ats[index] = None
+    def find_by(xs, y, key=lambda x: x, pred=lambda a, b: a == b):
+        for i, x in enumerate(xs):
+            if pred(key(x), y):
+                return i
+
+        return -1
+
+    _i = find_by(ats, '_', lambda x: x.name)
+    index = find_by(ats, level1_commands, key=lambda x: x.name, pred=lambda a, b: a in b)
+
+    if _i >= 0 and index >= 0:
+        ats[_i].name = ats[index].name
+        if ats[index].lines:
+            ats[_i].lines.insert(0, ats[index].lines[0])
+            ats[_i].lines.extend(ats[index].lines[1:]) # does this happen?
+
+        ats[index] = None
 
     return filter(None, ats)
 
