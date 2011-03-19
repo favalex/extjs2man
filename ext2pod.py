@@ -372,8 +372,13 @@ class Property(DocNode):
     def __init__(self, name, lines):
         super(Property, self).__init__(name)
 
-        self.name = lines[0]
-        self.text = Text(lines[1:])
+        if lines:
+            self.name = lines[0]
+            self.text = Text(lines[1:])
+        else:
+            print >>sys.stderr, 'Malformed property', lines
+            self.name = '???'
+            self.text = ''
 
     def __repr__(self):
         return 'Property(' + repr(self.name) + ')'
