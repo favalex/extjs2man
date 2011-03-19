@@ -280,7 +280,7 @@ class Param(DocNode):
     re_ = re.compile('({[^}]+})?\s*(\w+)\s*(.*)')
     def __init__(self, name, lines):
         super(Param, self).__init__(name)
-        c = lines[0]
+        c = lines.pop(0)
 
         m = Param.re_.match(c)
         if m:
