@@ -154,7 +154,8 @@ class Text(object):
 def render_params_details(params):
     result = []
     for param in params:
-        result.append('=item ' + param.pod())
+        if str(param.text):
+            result.append('=item ' + param.pod())
     return '\n\n'.join(result)
 
 def render_params_summary(params):
