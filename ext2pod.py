@@ -3,7 +3,7 @@
 
 import sys, re, os
 import pyparsing
-from HTMLParser import HTMLParser
+from HTMLParser import HTMLParser, HTMLParseError
 from collections import defaultdict
 
 debug = False
@@ -70,9 +70,14 @@ class HTMLNodes(HTMLParser):
     def handle_starttag(self, tag, attrs):
         node = Node(tag, attrs)
         self.nodes[-1].add(node)
-        self.nodes.append(node)
+        if tag not in ('br',):
+            self.nodes.append(node)
 
     def handle_endtag(self, tag):
+        if tag in ('br',):
+            self.handle_starttag(tag, {})
+            return
+
         if self.nodes[-1].tag == tag:
             self.nodes.pop()
         else:
@@ -115,11 +120,19 @@ class Text(object):
 
     def parse(self, s):
         nodes = HTMLNodes()
-        nodes.feed(s)
-        self.text = nodes.root()
+        try:
+            nodes.feed(s)
+        except HTMLParseError:
+            print >>sys.stderr, 'Malformed HTML'
+            self.text = s
+        else:
+            self.text = nodes.root()
 
     def __str__(self):
-        return self.text.pod()
+        if hasattr(self.text, 'pod'):
+            return self.text.pod()
+        else:
+            return self.text
 
     def __repr__(self):
         return 'Text(' + repr(self.text) + ')'
