@@ -6,6 +6,8 @@ import pyparsing
 from HTMLParser import HTMLParser
 from collections import defaultdict
 
+debug = False
+
 class Node(object):
     "An HTML tag that knows how to render itself into pod"
 
@@ -468,9 +470,10 @@ class Document(object):
             if c.startswith('/**'):
                 ats.extend(parse_comment(c, s, p[2]))
 
-        print 'LIST DUMP'
-        import pprint
-        pprint.pprint(ats)
+        if debug:
+            print 'LIST DUMP'
+            import pprint
+            pprint.pprint(ats)
 
         # build tree starting from flat ats
         self.classes = []
@@ -488,9 +491,10 @@ class Document(object):
             else:
                 cursor.append(node)
 
-        print 'TREE DUMP'
-        for class_ in self.classes:
-            class_.dump()
+        if debug:
+            print 'TREE DUMP'
+            for class_ in self.classes:
+                class_.dump()
 
     def pod(self, class_):
         s = """\
@@ -531,7 +535,11 @@ class Document(object):
             with open('%s.pod' % filename(class_), 'w') as out:
                 print >>out, self.pod(class_)
 
-filename = sys.argv[1]
+if sys.argv[1] == '-d':
+    debug = True
+    filename = sys.argv[2]
+else:
+    filename = sys.argv[1]
 
 if os.path.basename(filename).startswith('ext-lang-'):
     print 'Skipping translation file', os.path.basename(filename)
