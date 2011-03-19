@@ -150,7 +150,7 @@ class DocNode(object):
     def get_generic(self, name):
         gs = self.get_generic_list(name)
 
-        assert len(gs) <= 1
+        assert len(gs) <= 1, "More than one %r" % name
 
         try:
             return gs[0].text
@@ -197,7 +197,7 @@ B<%(name)s> %(extends)s %(xtype)s
 """ % self.__dict__
 
 class Cfg(DocNode):
-    re_ = re.compile('\s*({[a-zA-Z./]+})?\s*(\w+)\s*')
+    re_ = re.compile('\s*({[^}]+})?\s*(\w+)\s*')
     default_re = re.compile('defaults to\s+(\S+)')
 
     def __init__(self, name, lines):
@@ -351,8 +351,9 @@ class Property(DocNode):
 
     def pod(self):
         self.type = self.get_generic('type')
+        self.static = 'static ' if self.get_generic('static') else ''
         return """\
-B<%(name)s> %(type)s
+%(static)sB<%(name)s> %(type)s
 
 =over 4
 
@@ -362,13 +363,17 @@ B<%(name)s> %(type)s
 
 """ % self.__dict__
 
-at_options = defaultdict(lambda: (2, False, Generic))
-at_options['class'] = 0, True, Class
-at_options['event'] = 1, True, Event
-at_options['cfg'] = 1, True, Cfg
-at_options['property'] = 1, True, Property
-at_options['method'] = 1, True, Method
-at_options['param'] = 2, True, Param
+command_option = defaultdict(lambda: (2, False, Generic))
+command_option['class'] = 0, True, Class
+command_option['event'] = 1, True, Event
+command_option['cfg'] = 1, True, Cfg
+command_option['property'] = 1, True, Property
+command_option['method'] = 1, True, Method
+command_option['param'] = 2, True, Param
+command_option['return'] = 2, True, Generic
+command_option['constructor'] = 1, False, Generic
+
+level1_commands = [name for name, options in command_option.items() if options[0] <= 1]
 
 class At(object):
     def __init__(self, name, line=None):
@@ -390,6 +395,7 @@ class At(object):
 
 star_re = re.compile('^\s*\*\s*', re.MULTILINE)
 function_re = re.compile('\s*(\w+)\s*:\s*function')
+identifier_re = re.compile('\s*([A-Za-z0-9._]+)')
 
 def parse_comment(c, s, end):
     def remove_stars(c):
@@ -420,7 +426,7 @@ def parse_comment(c, s, end):
             at, line = split(line)
             at = At(at, line)
             ats.append(at)
-            _, multiline, _ = at_options[at.name]
+            _, multiline, _ = command_option[at.name]
             if multiline:
                 cursor = at
         else:
@@ -429,23 +435,34 @@ def parse_comment(c, s, end):
                 ats.insert(0, cursor)
             cursor.append(line)
 
-    if not set([at.name for at in ats]) & set(['cfg', 'class', 'property']):
+    if not set([at.name for at in ats]) & set(level1_commands):
         # collect the js identifier following this block of comments
         name = match(s, end, function_re)
         if name:
             ats.append(At('method', name))
         else:
-            print >>sys.stderr, 'Comment doesn\'t contain any leader'
+            if any(at.name == 'return' for at in ats):
+                what = 'method'
+            else:
+                what = 'property'
+
+            name = match(s, end, identifier_re)
+            if name:
+                ats.append(At(what, name))
+            else:
+                print 'failed match of %r' % s[end:end+20]
+                # print >>sys.stderr, 'Comment doesn\'t contain any level 1 command'
 
     # merge the lines of the leader into the dummy element
     if ats[0].name == '_':
-        for leader_index, leader in enumerate(ats):
-            if leader.name in ('cfg', 'class', 'property', 'method'):
-                ats[0].name = leader.name
-                ats[0].lines.insert(0, leader.lines[0])
-                ats[0].lines.extend(leader.lines[1:]) # does this happen?
+        for index, at in enumerate(ats):
+            if at.name in level1_commands:
+                ats[0].name = at.name
+                if at.lines:
+                    ats[0].lines.insert(0, at.lines[0])
+                    ats[0].lines.extend(at.lines[1:]) # does this happen?
 
-                ats[leader_index] = None
+                ats[index] = None
 
     return filter(None, ats)
 
@@ -481,7 +498,7 @@ class Document(object):
         self.classes = []
         cursor = self.classes # where to append nodes
         for at in ats:
-            level, _, class_ = at_options[at.name]
+            level, _, class_ = command_option[at.name]
             node = class_(at.name, at.lines)
 
             if level == 0:
