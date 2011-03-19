@@ -178,7 +178,8 @@ class DocNode(object):
     def get_generic(self, name):
         gs = self.get_generic_list(name)
 
-        assert len(gs) <= 1, "More than one %r" % name
+        if len(gs) > 1:
+            print >>sys.stderr, "More than one %r" % name
 
         try:
             return gs[0].text
