@@ -84,39 +84,53 @@ class HTMLNodes(HTMLParser):
             print >>sys.stderr, 'Unbalanced close tag %r (expecting %r)' % (tag, self.nodes[-1].tag)
 
     def handle_data(self, data):
-        cur = self.nodes[-1]
+        self.nodes[-1].add(data)
 
-        end = 0
-        start = data.find('{@link')
-        while start > -1 and start < len(data):
-            cur.add(data[end:start])
-            start += 7
+def translate_links(s):
+    """Translate {@link target text} into <link href="target">text</link>"""
+    result = []
 
-            end = data.find('}', start)
-            if end == -1:
-                print >>sys.stderr, 'warn: missing closing } after {@link'
-                end = len(data)
+    end = 0
+    start = s.find('{@link')
+    while start > -1 and start < len(s):
+        result.append(s[end:start])
+        start += 7
 
-            end += 1
-            node = Node('link')
-            link = data[start:end-1]
-            try:
-                node.add(link.split()[-1].replace('#', '')) # FIXME replace only leading #
-            except IndexError:
-                print >>sys.stderr, 'Malformed link %r' % link
-            else:
-                cur.add(node)
+        end = s.find('}', start)
+        if end == -1:
+            print >>sys.stderr, 'warn: missing closing } after {@link'
+            end = len(s)
 
-            start = data.find('{@link', end)
+        end += 1
 
-        cur.add(data[end:])
+        href_text = s[start:end-1].split(None, 1)
+        if len(href_text) == 2:
+            href, text = href_text
+        elif len(href_text) == 1:
+            href = ''
+            text = href_text[0]
+        else:
+            print >>sys.stderr, 'Empty {@link}'
+            href = ''
+            text = ''
+
+        if text:
+            result.append('<link%s>' % ((' href="%s"' % href) if href else ''))
+            result.append(text)
+            result.append('</link>')
+
+        start = s.find('{@link', end)
+
+    result.append(s[end:])
+
+    return ''.join(result)
 
 class Text(object):
     def __init__(self, s):
         if isinstance(s, list):
             s = '\n'.join(s)
 
-        self.parse(s)
+        self.parse(translate_links(s))
 
     def parse(self, s):
         nodes = HTMLNodes()
