@@ -465,7 +465,9 @@ class Document(object):
 
     def parse(self, s):
         ats = []
-        for p in pyparsing.cStyleComment('lalala').scanString(s):
+        parser = pyparsing.cStyleComment('lalala')
+        parser.parseWithTabs()
+        for p in parser.scanString(s):
             c = p[0][0]
             if c.startswith('/**'):
                 ats.extend(parse_comment(c, s, p[2]))
