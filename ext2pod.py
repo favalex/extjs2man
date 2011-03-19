@@ -7,6 +7,8 @@ from HTMLParser import HTMLParser
 from collections import defaultdict
 
 class Node(object):
+    "An HTML tag that knows how to render itself into pod"
+
     def __init__(self, tag, attrs=None):
         self.tag = tag
         self.attrs = attrs
@@ -18,9 +20,9 @@ class Node(object):
     def __repr__(self):
         return '%s(%s)' % (self.tag, ', '.join(map(repr, self.children)))
 
-    def render(self, plain=False):
+    def pod(self, plain=False):
         def render_content(plain):
-            return ''.join([child if isinstance(child, basestring) else child.render(plain=plain) for child in self.children])
+            return ''.join([child if isinstance(child, basestring) else child.pod(plain=plain) for child in self.children])
 
         if self.tag == 'pre':
             content = render_content(True)
@@ -104,6 +106,9 @@ class HTMLNodes(HTMLParser):
 
 class Text(object):
     def __init__(self, s):
+        if isinstance(s, list):
+            s = '\n'.join(s)
+
         self.parse(s)
 
     def parse(self, s):
@@ -112,7 +117,7 @@ class Text(object):
         self.text = nodes.root()
 
     def __str__(self):
-        return self.text.render()
+        return self.text.pod()
 
     def __repr__(self):
         return 'Text(' + repr(self.text) + ')'
@@ -130,23 +135,54 @@ def render_params_summary(params):
     return ', '.join(result)
 
 class DocNode(object):
-    def __init__(self):
+    def __init__(self, name):
+        self._name = name
         self.children = defaultdict(list)
 
     def append(self, node):
         self.children[type(node)].append(node)
 
+    def get_generic_list(self, name):
+        return [g for g in self.children[Generic] if g._name == name]
+
+    def get_generic(self, name):
+        gs = self.get_generic_list(name)
+
+        assert len(gs) <= 1
+
+        try:
+            return gs[0].text
+        except IndexError:
+            return None
+
+    def dump(self, indent=0):
+        print ' '*indent, self._name, getattr(self, 'name', '')
+        for name, items in self.children.items():
+            for item in items:
+                item.dump(indent=indent+2)
+
+class Generic(DocNode):
+    def __init__(self, name, lines):
+        super(Generic, self).__init__(name)
+
+        self.text = Text(lines)
+
+    def pod(self):
+        return str(self.text)
+
 class Class(DocNode):
-    def __init__(self, lines):
-        super(Class, self).__init__()
+    def __init__(self, name, lines):
+        super(Class, self).__init__(name)
 
         self.name = lines[0]
-        self.text = Text('\n'.join(lines[1:]))
+        self.text = Text(lines[1:])
 
     def __repr__(self):
         return 'Class(' + repr(self.name) + ')'
 
     def pod(self):
+        self.extends = self.get_generic('extends')
+        self.xtype = self.get_generic('xtype')
         return """\
 B<%(name)s> %(extends)s %(xtype)s
 
@@ -162,8 +198,8 @@ class Cfg(DocNode):
     re_ = re.compile('\s*({[a-zA-Z./]+})?\s*(\w+)\s*')
     default_re = re.compile('defaults to\s+(\S+)')
 
-    def __init__(self, lines):
-        super(Cfg, self).__init__()
+    def __init__(self, name, lines):
+        super(Cfg, self).__init__(name)
 
         cfg = lines[0]
 
@@ -211,8 +247,9 @@ B<%(name)s> %(type)s %(default)s
 class Param(DocNode):
     # {type} name text
     re_ = re.compile('({[^}]+})?\s*(\w+)\s*(.*)')
-    def __init__(self, c):
-        super(Param, self).__init__()
+    def __init__(self, name, lines):
+        super(Param, self).__init__(name)
+        c = lines[0]
 
         m = Param.re_.match(c)
         if m:
@@ -220,7 +257,8 @@ class Param(DocNode):
             if self.type:
                 self.type = self.type.lstrip('{').rstrip('}')
             self.name = m.group(2)
-            self.text = Text(m.group(3))
+            lines.insert(0, m.group(3))
+            self.text = Text(lines)
         else:
             self.name = '???'
             self.type = '???'
@@ -234,20 +272,21 @@ class Param(DocNode):
         return "%s\t%s" % (self.name, self.text)
 
 class Method(DocNode):
-    def __init__(self, lines):
-        super(Method, self).__init__()
+    def __init__(self, name, lines):
+        super(Method, self).__init__(name)
 
         self.name = lines[0]
 
-        self.text = Text('\n'.join(lines[1:]))
+        self.text = Text(lines[1:])
 
     def __repr__(self):
         return 'Method(' + repr(self.name) + ')'
 
     def pod(self):
-        self.params_summary = 'FIXME' # render_params_summary(self.params)
-        self.params_details = 'FIXME' # render_params_details(self.params)
-        self.return_ = 'FIXME'
+        params = self.children[Param]
+        self.params_summary = render_params_summary(params)
+        self.params_details = render_params_details(params)
+        self.return_ = self.get_generic('return')
 
         return """\
 B<%(name)s>(%(params_summary)s) -> %(return_)s
@@ -267,18 +306,19 @@ B<%(name)s>(%(params_summary)s) -> %(return_)s
 """ % self.__dict__
 
 class Event(DocNode):
-    def __init__(self, lines):
-        super(Event, self).__init__()
+    def __init__(self, name, lines):
+        super(Event, self).__init__(name)
 
         self.name = lines[0]
-        self.text = Text('\n'.join(lines[1:]))
+        self.text = Text(lines[1:])
 
     def __repr__(self):
         return 'Event(' + repr(self.name) + ')'
 
     def pod(self):
-        self.params_summary = 'FIXME' # render_params_summary(self.params)
-        self.params_details = 'FIXME' # render_params_details(self.params)
+        params = self.children[Param]
+        self.params_summary = render_params_summary(params)
+        self.params_details = render_params_details(params)
 
         return """\
 B<%(name)s>(%(params_summary)s)
@@ -298,17 +338,17 @@ B<%(name)s>(%(params_summary)s)
 """ % self.__dict__
 
 class Property(DocNode):
-    def __init__(self, lines):
-        super(Property, self).__init__()
+    def __init__(self, name, lines):
+        super(Property, self).__init__(name)
 
         self.name = lines[0]
-        self.text = Text('\n'.join(lines[1:]))
+        self.text = Text(lines[1:])
 
     def __repr__(self):
         return 'Property(' + repr(self.name) + ')'
 
     def pod(self):
-        self.type = 'FIXME'
+        self.type = self.get_generic('type')
         return """\
 B<%(name)s> %(type)s
 
@@ -320,21 +360,13 @@ B<%(name)s> %(type)s
 
 """ % self.__dict__
 
-class Generic(DocNode):
-    def __init__(self, lines):
-        super(Generic, self).__init__()
-
-        self.name = '<generic>'
-        self.text = Text('\n'.join(lines))
-
-    def pod(self):
-        return str(self.text)
-
 at_options = defaultdict(lambda: (2, False, Generic))
 at_options['class'] = 0, True, Class
 at_options['event'] = 1, True, Event
 at_options['cfg'] = 1, True, Cfg
 at_options['property'] = 1, True, Property
+at_options['method'] = 1, True, Method
+at_options['param'] = 2, True, Param
 
 class At(object):
     def __init__(self, name, line=None):
@@ -436,26 +468,29 @@ class Document(object):
             if c.startswith('/**'):
                 ats.extend(parse_comment(c, s, p[2]))
 
+        print 'LIST DUMP'
         import pprint
         pprint.pprint(ats)
 
         # build tree starting from flat ats
         self.classes = []
-        cursor = self.classes
+        cursor = self.classes # where to append nodes
         for at in ats:
             level, _, class_ = at_options[at.name]
-            node = class_(at.lines)
+            node = class_(at.name, at.lines)
 
             if level == 0:
-                cursor = self.classes
+                self.classes.append(node)
+                cursor = node
             elif level == 1:
-                cursor = self.classes[-1]
+                self.classes[-1].append(node)
+                cursor = node
+            else:
+                cursor.append(node)
 
-            cursor.append(node)
-
-        pprint.pprint(self.classes)
+        print 'TREE DUMP'
         for class_ in self.classes:
-            pprint.pprint(class_.children)
+            class_.dump()
 
     def pod(self, class_):
         s = """\
@@ -465,11 +500,14 @@ class Document(object):
 
 """
 
+        s += "\n\n=head1 DESCRIPTION\n\n"
+        s += class_.pod()
+
         for section_class, section_header in self.Sections:
             if class_.children[section_class]:
-                s += "\n\n=head2 %s\n\n" % section_header
+                s += "\n\n=head1 %s\n\n" % section_header
 
-                for item in sorted(class_.children[section_class], key=lambda i: i.name):
+                for item in sorted(class_.children[section_class], key=lambda i: getattr(i, 'name', '')):
                     if hasattr(item, 'pod'):
                         s += item.pod()
                     else:
