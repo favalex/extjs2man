@@ -239,7 +239,7 @@ class Cfg(DocNode):
     def __init__(self, name, lines):
         super(Cfg, self).__init__(name)
 
-        cfg = lines[0]
+        cfg = lines.pop(0)
 
         self.name = 'FIXME'
         self.type = 'FIXME'
