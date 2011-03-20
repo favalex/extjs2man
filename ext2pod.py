@@ -206,7 +206,7 @@ class Generic(DocNode):
         self.text = Text(lines)
 
     def pod(self):
-        return str(self.text)
+        return "%s: %s" % (self._name, self.text)
 
 class Class(DocNode):
     def __init__(self, name, lines):
