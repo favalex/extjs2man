@@ -215,9 +215,6 @@ class Class(DocNode):
         self.name = lines[0]
         self.text = Text(lines[1:])
 
-    def __repr__(self):
-        return 'Class(' + repr(self.name) + ')'
-
     def pod(self):
         self.extends = self.get_generic('extends')
         self.xtype = self.get_generic('xtype')
@@ -267,9 +264,6 @@ class Cfg(DocNode):
         else:
             self.default = ''
 
-    def __repr__(self):
-        return 'Cfg(%s)' % ', '.join(['%s=%r' % (name, getattr(self, name)) for name in ['name', 'type', 'default', 'text']])
-
     def pod(self):
         return """\
 B<%(name)s> %(type)s %(default)s
@@ -303,9 +297,6 @@ class Param(DocNode):
             self.text = c
             print >>sys.stderr, 'malformed Param', c
 
-    def __repr__(self):
-        return 'Param(' + repr(self.name) + ')'
-
     def pod(self):
         return "%s %s" % (self.name, self.text)
 
@@ -316,9 +307,6 @@ class Method(DocNode):
         self.name = lines[0]
 
         self.text = Text(lines[1:])
-
-    def __repr__(self):
-        return 'Method(' + repr(self.name) + ')'
 
     def pod(self):
         params = self.children[Param]
@@ -349,9 +337,6 @@ class Event(DocNode):
 
         self.name = lines[0]
         self.text = Text(lines[1:])
-
-    def __repr__(self):
-        return 'Event(' + repr(self.name) + ')'
 
     def pod(self):
         params = self.children[Param]
@@ -387,8 +372,6 @@ class Property(DocNode):
             self.name = '???'
             self.text = ''
 
-    def __repr__(self):
-        return 'Property(' + repr(self.name) + ')'
 
     def pod(self):
         self.type = self.get_generic('type')
