@@ -6,6 +6,13 @@ import pyparsing
 from HTMLParser import HTMLParser, HTMLParseError
 from collections import defaultdict
 
+def find_by(xs, y, key=lambda x: x, pred=lambda a, b: a == b):
+    for i, x in enumerate(xs):
+        if pred(key(x), y):
+            return i
+
+    return -1
+
 debug = False
 
 class Node(object):
@@ -469,6 +476,12 @@ def parse_comment(c, s, end):
                 ats.insert(0, cursor)
             cursor.append(line)
 
+    property_i = find_by(ats, 'property', key=lambda x: x.name)
+    if property_i >= 0 and not ats[property_i].lines:
+        name = match(s, end, identifier_re)
+        if name:
+            ats[property_i].lines = [name]
+
     if not set([at.name for at in ats]) & set(level1_commands):
         # collect the js identifier following this block of comments
         name = match(s, end, function_re)
@@ -488,13 +501,6 @@ def parse_comment(c, s, end):
                 # print >>sys.stderr, 'Comment doesn\'t contain any level 1 command'
 
     # merge the lines of the leader into the dummy element
-
-    def find_by(xs, y, key=lambda x: x, pred=lambda a, b: a == b):
-        for i, x in enumerate(xs):
-            if pred(key(x), y):
-                return i
-
-        return -1
 
     _i = find_by(ats, '_', lambda x: x.name)
     index = find_by(ats, level1_commands, key=lambda x: x.name, pred=lambda a, b: a in b)
