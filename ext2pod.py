@@ -171,6 +171,9 @@ def render_params_summary(params):
         result.append('%s: %s' % (param.name, param.type))
     return ', '.join(result)
 
+class InvalidDocNode(Exception):
+    pass
+
 class DocNode(object):
     def __init__(self, name):
         self._name = name
@@ -364,6 +367,9 @@ class Property(DocNode):
     def __init__(self, name, lines):
         super(Property, self).__init__(name)
 
+        if not lines:
+            raise InvalidDocNode('Empty property')
+
         self.name = lines[0]
         self.text = Text(lines[1:])
 
@@ -525,7 +531,11 @@ class Document(object):
         cursor = self.classes # where to append nodes
         for at in ats:
             level, _, class_ = command_option[at.name]
-            node = class_(at.name, at.lines)
+            try:
+                node = class_(at.name, at.lines)
+            except InvalidDocNode as e:
+                print e
+                continue
 
             if level == 0:
                 self.classes.append(node)
