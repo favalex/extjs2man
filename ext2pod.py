@@ -553,6 +553,9 @@ class Document(object):
         s += class_.pod()
 
         for section_class, section_header in self.Sections:
+            if section_header == 'DEBUGGING' and not debug:
+                continue
+
             if class_.children[section_class]:
                 s += "\n\n=head1 %s\n\n" % section_header
 
