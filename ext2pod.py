@@ -220,7 +220,13 @@ class Class(DocNode):
 
     def pod(self):
         self.extends = self.get_generic('extends')
-        self.xtype = self.get_generic('xtype')
+
+        constructor = self.get_generic_list('constructor')
+        if constructor:
+            self.xtype = constructor[0].get_generic('xtype')
+        else:
+            self.xtype = self.get_generic('xtype')
+
         return """\
 B<%(name)s> %(extends)s %(xtype)s
 
