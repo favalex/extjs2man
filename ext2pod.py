@@ -593,4 +593,8 @@ if os.path.basename(filename).startswith('ext-lang-'):
     print 'Skipping translation file', os.path.basename(filename)
     sys.exit(0)
 
-Document(open(filename).read()).save_pods()
+try:
+    Document(open(filename).read()).save_pods()
+except:
+    if debug:
+        import pdb; pdb.post_mortem()
